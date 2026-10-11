@@ -19,9 +19,33 @@ const logLine = (html) => {
 
 let ceremony = null;
 
+// The vendor interface is usage page 0xFF00, usage 0x01 (the contract the
+// extension filters on). getDevices-first: a grant from an earlier run in
+// this profile reuses the device with no chooser; the chooser is the only
+// other path, and it needs the user's click.
+async function findVendorDevice() {
+  const known = await navigator.hid.getDevices();
+  return (
+    known.find((d) => d.collections?.some((c) => c.usagePage === 0xff00 && c.usage === 0x01)) ??
+    null
+  );
+}
+
 $('start').addEventListener('click', async () => {
   try {
-    const dev = await requestDevice();
+    if (!navigator.hid) {
+      logLine('<span class="err">WebHID is not available in this browser</span>');
+      return;
+    }
+    let dev = await findVendorDevice();
+    if (!dev) {
+      const chosen = await requestDevice();
+      dev = chosen;
+    }
+    if (!dev) {
+      logLine('<span class="err">no Nostr interface (0xFF00:0x01) on the board — is the feat/nostr firmware flashed?</span>');
+      return;
+    }
     const transport = new CtapVendorTransport(dev);
     const signer = new FapicoSigner(transport);
     const nip = new FapicoNip44(transport);

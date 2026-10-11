@@ -9587,9 +9587,25 @@
     $("log").scrollTop = $("log").scrollHeight;
   };
   var ceremony = null;
+  async function findVendorDevice() {
+    const known = await navigator.hid.getDevices();
+    return known.find((d) => d.collections?.some((c) => c.usagePage === 65280 && c.usage === 1)) ?? null;
+  }
   $("start").addEventListener("click", async () => {
     try {
-      const dev = await requestDevice();
+      if (!navigator.hid) {
+        logLine('<span class="err">WebHID is not available in this browser</span>');
+        return;
+      }
+      let dev = await findVendorDevice();
+      if (!dev) {
+        const chosen = await requestDevice();
+        dev = chosen;
+      }
+      if (!dev) {
+        logLine('<span class="err">no Nostr interface (0xFF00:0x01) on the board \u2014 is the feat/nostr firmware flashed?</span>');
+        return;
+      }
       const transport = new CtapVendorTransport(dev);
       const signer = new FapicoSigner(transport);
       const nip = new FapicoNip44(transport);
