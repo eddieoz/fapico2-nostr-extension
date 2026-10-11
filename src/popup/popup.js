@@ -102,6 +102,13 @@ const pairing = createPairing({
 function renderDeviceCard(h) {
   if (!h) return;
   state.lastHealth = h;
+  if (h.state === 'busy') {
+    // The probe window is rate-limited, not broken — amber, and the boot
+    // path retries once below.
+    setDeviceDot('busy');
+    $('device-state').textContent = 'busy — retrying in a second';
+    return;
+  }
   setDeviceDot(h.state === 'connected' ? 'connected' : 'absent');
   $('device-state').innerHTML =
     h.state === 'connected'
@@ -112,7 +119,13 @@ function renderDeviceCard(h) {
 }
 
 async function healthCheck({ force = false } = {}) {
-  renderDeviceCard(await pairing.health({ force }));
+  let h = await pairing.health({ force });
+  if (h.state === 'busy') {
+    // The worker's 1 s probe window was busy: one retry after it lapses.
+    await new Promise((r) => setTimeout(r, 1100));
+    h = await pairing.health({ force: true });
+  }
+  renderDeviceCard(h);
 }
 
 // The chooser: only this button, only in this gesture. (US-1702: never from
@@ -124,8 +137,8 @@ $('connect').addEventListener('click', async () => {
     return;
   }
   try {
-    await pairing.connect();
-    renderDeviceCard(pairing.lastHealth);
+    const health = await pairing.connect();
+    renderDeviceCard(health ?? pairing.lastHealth);
     await loadKeys();
   } catch (err) {
     if (err?.name === 'NotFoundError') {

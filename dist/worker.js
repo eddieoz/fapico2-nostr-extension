@@ -545,10 +545,11 @@
           );
         }
       },
-      /** Touch-free PING (0x40), rate-limited to one probe per second. */
-      async ping() {
+      /** Touch-free PING (0x40), rate-limited to one probe per second —
+       *  except user-initiated probes (pair_device), which pass force. */
+      async ping({ force = false } = {}) {
         const since = now2() - lastPingAt;
-        if (since < 1e3) throw Object.assign(new Error("health check rate-limited"), { code: "RATE_LIMITED", name: "RateLimitError" });
+        if (!force && since < 1e3) throw Object.assign(new Error("health check rate-limited \u2014 retry in a second"), { code: "RATE_LIMITED", name: "RateLimitError" });
         lastPingAt = now2();
         try {
           const t = await ensureTransport();
@@ -7432,6 +7433,9 @@
           if (err instanceof DeviceAbsentError || err?.code === "DEVICE_ABSENT") {
             return { state: "absent", code: "DEVICE_ABSENT" };
           }
+          if (err?.code === "RATE_LIMITED") {
+            return { state: "busy", code: "RATE_LIMITED" };
+          }
           return { state: "error", code: err.code ?? "error", message: err.message };
         }
       },
@@ -7440,7 +7444,7 @@
       // opens a chooser.
       pair_device: async () => {
         device.forget();
-        const res = await device.ping();
+        const res = await device.ping({ force: true });
         return { state: res.sw === SW.OK ? "connected" : "error", sw: res.sw };
       },
       generate_key: async ([slot]) => {

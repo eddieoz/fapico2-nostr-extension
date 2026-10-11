@@ -66,6 +66,11 @@ export function createHandlers({
         if (err instanceof DeviceAbsentError || err?.code === 'DEVICE_ABSENT') {
           return { state: 'absent', code: 'DEVICE_ABSENT' };
         }
+        if (err?.code === 'RATE_LIMITED') {
+          // Not an error: the probe window is just busy — the card shows
+          // the amber busy state instead of a red error.
+          return { state: 'busy', code: 'RATE_LIMITED' };
+        }
         return { state: 'error', code: err.code ?? 'error', message: err.message };
       }
     },
@@ -75,7 +80,9 @@ export function createHandlers({
     // opens a chooser.
     pair_device: async () => {
       device.forget();
-      const res = await device.ping();
+      // The user just chose the device: this probe bypasses the 1 s window
+      // (it IS the connect flow, not a background poll).
+      const res = await device.ping({ force: true });
       return { state: res.sw === SW.OK ? 'connected' : 'error', sw: res.sw };
     },
 

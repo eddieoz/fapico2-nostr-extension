@@ -306,7 +306,10 @@
           err.name = "NotFoundError";
           throw err;
         }
-        return call("pair_device").then(() => this.health({ force: true }));
+        const res = await call("pair_device");
+        lastHealth = res.state === "connected" ? { state: "connected" } : { state: "error", message: res.message };
+        persist(lastHealth);
+        return lastHealth;
       },
       /** Touch-free PING, rate-limited. Returns the device-card state. */
       async health({ force = false } = {}) {
@@ -7044,11 +7047,21 @@
   function renderDeviceCard(h) {
     if (!h) return;
     state.lastHealth = h;
+    if (h.state === "busy") {
+      setDeviceDot("busy");
+      $("device-state").textContent = "busy \u2014 retrying in a second";
+      return;
+    }
     setDeviceDot(h.state === "connected" ? "connected" : "absent");
     $("device-state").innerHTML = h.state === "connected" ? "fapico2 board <b>connected</b>" : h.state === "absent" ? "no fapico2 board granted \u2014 connect it" : "device error";
   }
   async function healthCheck({ force = false } = {}) {
-    renderDeviceCard(await pairing.health({ force }));
+    let h = await pairing.health({ force });
+    if (h.state === "busy") {
+      await new Promise((r) => setTimeout(r, 1100));
+      h = await pairing.health({ force: true });
+    }
+    renderDeviceCard(h);
   }
   $("connect").addEventListener("click", async () => {
     if (!navigator.hid) {
@@ -7057,8 +7070,8 @@
       return;
     }
     try {
-      await pairing.connect();
-      renderDeviceCard(pairing.lastHealth);
+      const health = await pairing.connect();
+      renderDeviceCard(health ?? pairing.lastHealth);
       await loadKeys();
     } catch (err) {
       if (err?.name === "NotFoundError") {

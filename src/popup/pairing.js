@@ -21,8 +21,14 @@ export function createPairing({ requestDevice, call, persist = () => {}, now = (
         throw err;
       }
       // The chooser has registered the grant with the browser; the worker
-      // forgets any stale transport and re-pings the interface.
-      return call('pair_device').then(() => this.health({ force: true }));
+      // forgets any stale transport and re-pings the interface. Its answer
+      // IS the card state — a second probe here would trip the worker's
+      // 1 s rate window and paint a working device as "device error".
+      const res = await call('pair_device');
+      lastHealth =
+        res.state === 'connected' ? { state: 'connected' } : { state: 'error', message: res.message };
+      persist(lastHealth);
+      return lastHealth;
     },
 
     /** Touch-free PING, rate-limited. Returns the device-card state. */

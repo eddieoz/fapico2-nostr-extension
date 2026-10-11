@@ -136,10 +136,11 @@ export function createDeviceOwner({
       }
     },
 
-    /** Touch-free PING (0x40), rate-limited to one probe per second. */
-    async ping() {
+    /** Touch-free PING (0x40), rate-limited to one probe per second —
+     *  except user-initiated probes (pair_device), which pass force. */
+    async ping({ force = false } = {}) {
       const since = now() - lastPingAt;
-      if (since < 1000) throw Object.assign(new Error('health check rate-limited'), { code: 'RATE_LIMITED', name: 'RateLimitError' });
+      if (!force && since < 1000) throw Object.assign(new Error('health check rate-limited — retry in a second'), { code: 'RATE_LIMITED', name: 'RateLimitError' });
       lastPingAt = now();
       try {
         const t = await ensureTransport();
