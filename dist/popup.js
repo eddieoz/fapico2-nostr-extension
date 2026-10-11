@@ -7133,7 +7133,7 @@
         (r) => `
       <div class="key-row">
         <label class="key-pick" for="active-${r.idx}" title="Make this the active key">
-          <input type="radio" name="active-key" id="active-${r.idx}" data-slot="${r.idx}">
+          <input type="radio" name="active-key" id="active-${r.idx}" data-slot="${r.idx}" aria-label="Make slot ${r.idx} the active key">
           <span class="key-idx">${r.idx}</span>
           <span class="key-npub">
             <span class="bech">${r.npubBech32.slice(0, 20)}\u2026${r.npubBech32.slice(-4)}</span><br>
