@@ -1,0 +1,29 @@
+# US-1689 — the CI gate. Same three steps a developer runs (install, test,
+# build) plus the bundle-freshness diff: dist/ is committed, and a rebuild
+# that differs from the committed copy fails the tree — the committed bundle
+# is never stale (the OpenXrypt ci.yml pattern). The CDP smoke gate
+# (US-1708) runs when Chrome is available on the runner.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: the committed dist/ must be fresh
+        run: git diff --exit-code -- dist/
+      - name: CDP smoke (US-1708) — release blocker when Chrome is present
+        run: npm run test:smoke
+        env:
+          CHROME_PATH: chrome
+        continue-on-error: false
