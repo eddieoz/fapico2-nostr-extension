@@ -58,9 +58,10 @@ test('US-1690 src/core is byte-identical to the OpenXrypt d431b00 originals exce
   // reason named. Today it carries one reviewed, hardware-forced fix:
   //
   //  - ctaphid.js — `dev.sendReport({reportId: 0, data: r})` →
-  //    `dev.sendReport(r, 0)` (lines 242/265/312, plus the header comment
+  //    `dev.sendReport(0, r)` (lines 242/265/312, plus the header comment
   //    naming the surface). OpenXrypt's dictionary form does not exist in
-  //    Chrome's WebHID: `HIDDevice.sendReport(data, reportId)`. The ported
+  //    Chrome's WebHID: `HIDDevice.sendReport(reportId, data)` — the
+  //    reportId is the FIRST argument. The ported
   //    test double accepted the dictionary, so only a real device could
   //    catch it — the US-1709 ceremony did, on the first INIT (the typed
   //    failure is recorded in docs/ceremony-results.md). Found on

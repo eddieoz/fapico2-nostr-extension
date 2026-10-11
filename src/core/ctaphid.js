@@ -239,7 +239,7 @@ export class CtapVendorTransport {
     await this.dev.open();
     const waiter = this._expect(BROADCAST_CID, CMD_INIT);
     for (const r of frameReports(BROADCAST_CID, CMD_INIT, nonce)) {
-      await this.dev.sendReport(r, 0); // the real WebHID signature: sendReport(data, reportId)
+      await this.dev.sendReport(0, r); // the real WebHID signature: sendReport(reportId, data)
     }
     const reply = await waiter;
     if (reply.payload.length < 17) throw new CtapError(CtapErr.BAD_INIT, "short INIT reply");
@@ -262,7 +262,7 @@ export class CtapVendorTransport {
     if (!this.cid) throw new CtapError(CtapErr.DEVICE_ABSENT, "transport not opened");
     const payload = encodeRequest(idx, arg);
     for (const r of frameReports(this.cid, cmd, payload)) {
-      await this.dev.sendReport(r, 0); // the real WebHID signature: sendReport(data, reportId)
+      await this.dev.sendReport(0, r); // the real WebHID signature: sendReport(reportId, data)
     }
     const deadline = Date.now() + timeoutMs;
     let sawUpNeeded = false;
@@ -309,7 +309,7 @@ export class CtapVendorTransport {
   // device's CANCEL is silent when nothing is parked, so absence is normal.
   async _cancelAndCollect(replyCmd, timeoutMs = 20_000) {
     const cancel = frameReports(this.cid, CMD_CANCEL, new Uint8Array(0));
-    for (const r of cancel) await this.dev.sendReport(r, 0); // the real WebHID signature: sendReport(data, reportId)
+    for (const r of cancel) await this.dev.sendReport(0, r); // the real WebHID signature: sendReport(reportId, data)
     try {
       const frame = await this._expectFrame(this.cid, timeoutMs);
       if (frame.cmd === replyCmd) {

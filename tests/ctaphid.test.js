@@ -46,7 +46,7 @@ class FakeDevice {
     this.closed = true;
   }
 
-  async sendReport(data) {
+  async sendReport(reportId, data) {
     this.sent.push(new Uint8Array(data));
     // The device answers after the report is on the wire — deferred so the
     // transport has registered its waiter before a scripted reply lands

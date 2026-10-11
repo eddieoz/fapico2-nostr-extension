@@ -192,7 +192,7 @@ export function rawInit(dev, { timeoutMs = 5000 } = {}) {
       resolve({ nonce, reply: reply.slice(0, 17) });
     };
     dev
-      .sendReport(frame, 0)
+      .sendReport(0, frame)
       .catch((err) => {
         clearTimeout(timer);
         dev.oninputreport = previous;
