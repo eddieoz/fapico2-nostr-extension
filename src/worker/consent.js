@@ -29,11 +29,18 @@ export function createConsentGate({
   portName = () => 'nostr-consent',
   hostOf = hostFromSender,
   previewOf = null,
+  devicePresent = null,
 } = {}) {
   return async function consent({ method, args, sender, requestId, preview }) {
     const host = hostOf(sender);
     const granted = await permissions.check(host, method);
     if (granted) return { host, method, grant: granted };
+
+    // US-1707/US-1708: with no device granted at all, the refusal is typed
+    // and loud — refused, not queued, and no prompt window for a device
+    // that cannot answer. The prompt (context before the touch) is for a
+    // device that is actually there.
+    if (devicePresent) await devicePresent();
 
     // The device is NOT touched here. The prompt renders first.
     const shown = preview ?? previewOf?.(method, args) ?? '';

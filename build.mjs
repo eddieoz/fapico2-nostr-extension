@@ -32,6 +32,9 @@ const entries = [
   // Extension pages.
   { entry: 'src/popup/popup.js', outfile: 'dist/popup.js' },
   { entry: 'src/prompt/prompt.js', outfile: 'dist/prompt.js' },
+  // US-1709: the ceremony page's bundle (nostr-tools + the seam over the
+  // raw device) — tests/manual/ceremony.html imports it from the repo root.
+  { entry: 'src/manual/ceremony-page.js', outfile: 'dist/ceremony.js' },
 ];
 
 for (const { entry, outfile } of entries) {

@@ -47,16 +47,46 @@ export const USER_DENIED = {
 
 export function serializeError(err) {
   if (err && typeof err === 'object') {
+    // US-1707: the typed vocabulary is the only thing that crosses a port.
+    // A raw TypeError/SecurityError/HID internal is rebranded internal-error
+    // — still typed, never a raw name the page would have to guess at.
+    if (!TYPED_NAMES.has(err.name)) {
+      return {
+        name: 'InternalError',
+        code: 'internal-error',
+        message: String(err.message ?? err),
+      };
+    }
     return {
-      name: err.name ?? 'Error',
+      name: err.name,
       message: String(err.message ?? err),
       code: err.code ?? err.name,
       sw: err.sw,
       device: err.device,
     };
   }
-  return { name: 'Error', message: String(err), code: 'error' };
+  // A thrown string/Symbol/number: typed, with the text kept for the user.
+  return { name: 'InternalError', code: 'internal-error', message: String(err) };
 }
+
+/** US-1707 — the typed vocabulary, single source of truth for the port
+ *  boundary. Everything else is rebranded InternalError. */
+export const TYPED_NAMES = new Set([
+  'DeviceAbsentError',
+  'SwError',
+  'SignerError',
+  'CtapError',
+  'CeremonyInterruptedError',
+  'UserDeniedError',
+  'UnsupportedMethodError',
+  'ForbiddenMethodError',
+  'QueueFullError',
+  'PortDisconnectedError',
+  'PermissionRequiredError',
+  'RateLimitError',
+  'PayloadTooLargeError',
+  'InternalError',
+]);
 
 export function reviveError(blob) {
   if (!blob || typeof blob !== 'object') return new Error(String(blob));

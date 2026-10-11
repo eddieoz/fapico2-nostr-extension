@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>fapico2 Nostr — hardware ceremony (US-1709)</title>
+<style>
+  body { font: 14px/1.5 monospace; background: #14171c; color: #d7dce3; margin: 2rem; max-width: 900px; }
+  h1 { font-size: 16px; letter-spacing: 0.1em; text-transform: uppercase; }
+  button { font: inherit; margin: 0 0.5rem 0.5rem 0; padding: 0.4rem 0.9rem; background: #ffb340; border: none; color: #14171c; font-weight: bold; cursor: pointer; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  pre { background: #0d0f12; border: 1px solid #2c313a; padding: 0.8rem; white-space: pre-wrap; min-height: 12rem; }
+  .ok { color: #7ddc7d; } .err { color: #ff8080; } .dim { color: #8a919c; }
+  #results { white-space: pre-wrap; color: #ffb340; }
+</style>
+</head>
+<body>
+<h1>fapico2 Nostr — hardware ceremony</h1>
+<p>
+  The manual release gate (US-1709). Board flashed with <code>fapico2
+  feat/nostr</code>, served from the repo root (e.g.
+  <code>python3 -m http.server</code>) — the ordered steps block on failure:
+</p>
+<p>
+  init (capFlags 0x00, version 0.1.0) → generate key (touch) →
+  <code>getPublicKey</code> → <code>signEvent</code> (touch, verified against
+  nostr-tools) → <code>nip44</code> encrypt/decrypt round trip (touch) →
+  delete key (touch, npub echo checked).
+</p>
+<p>
+  <button id="start">1. Select the Nostr interface (0xFF00:0x01)</button>
+  <button id="next" disabled>2. Run next step</button>
+</p>
+<pre id="log"></pre>
+<pre id="results" hidden></pre>
+<script type="module">
+  // The bundled ceremony (nostr-tools + the seam): served from the repo
+  // root, so the path from tests/manual/ is ../../dist/ceremony.js.
+  import '../../dist/ceremony.js';
+</script>
+</body>
+</html>

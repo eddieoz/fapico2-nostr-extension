@@ -90,17 +90,10 @@ export function validateLabel(label) {
   return bytes;
 }
 
-/** US-1704 — the SW vocabulary the generate/import/delete screens render. */
-export const SW_WORDS = {
-  0x9000: 'done',
-  0x6a80: 'the device refused the data',
-  0x6a82: 'that identity is not on the device',
-  0x6a84: 'that slot is occupied — delete it first',
-  0x6a86: 'the device refused the parameters',
-  0x6a88: 'nothing to delete there',
-  0x6985: 'touch timed out — the device asked for a touch and none came',
-  0x6b00: 'the device refused the command parameters',
-  0x6a87: 'the device refused the command length',
-  0x6f00: 'the device could not complete the operation (store fault)',
-  0x6d00: 'the device does not serve that command',
-};
+/** US-1704/US-1707 — the SW vocabulary the screens render, derived from the
+ *  single source of truth (the worker's error map — one table, both sides
+ *  of the port bundle it). */
+import { SW_ERROR_MAP } from '../worker/error-map.js';
+export const SW_WORDS = Object.fromEntries(
+  Object.entries(SW_ERROR_MAP).map(([sw, v]) => [Number(sw), v.message]),
+);

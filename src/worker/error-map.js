@@ -1,0 +1,33 @@
+// US-1707 — the SW → human-sentence mapping table: the single source of
+// truth covering every status word in the D13 vocabulary the firmware can
+// emit (fixture: tests/fixtures/nostr_wire_d15abe7.js). Every failure the
+// page can see has a name and a next step; an unknown SW is still typed —
+// `device-error` with the hex code in the sentence.
+
+export const SW_ERROR_MAP = {
+  0x9000: { code: 'OK', message: 'ok' },
+  0x6a80: { code: 'SW_WRONG_DATA', message: 'the device refused the data — it could not read the request' },
+  0x6a82: { code: 'SW_FILE_NOT_FOUND', message: 'that identity is not on the device' },
+  0x6a84: { code: 'SW_FILE_FULL', message: 'that slot is occupied — delete it first' },
+  0x6a86: { code: 'SW_INCORRECT_PARAMS', message: 'the device refused the parameters' },
+  0x6a87: { code: 'SW_LC_INCONSISTENT', message: 'the device refused the command length' },
+  0x6a88: { code: 'SW_REFERENCED_DATA_NOT_FOUND', message: 'nothing there to operate on' },
+  0x6b00: { code: 'SW_INCORRECT_P1P2', message: 'the device refused the command parameters' },
+  // The touch word: the consent window closed without a press (15 s), or a
+  // second vendor request arrived while a window was parked (the queue
+  // exists so the client never provokes that one).
+  0x6985: { code: 'SW_TOUCH_REQUIRED', message: 'touch timed out — the device asked for a touch and none came' },
+  0x6d00: { code: 'SW_INS_NOT_SUPPORTED', message: 'the device does not serve that command' },
+  0x6f00: { code: 'SW_STORE_FAULT', message: 'the device could not complete the operation — its store faulted' },
+};
+
+/** The mapping for one status word; unknown words are typed device-error. */
+export function describeSw(sw) {
+  const known = SW_ERROR_MAP[sw];
+  if (known) return { ...known, known: true };
+  return {
+    code: 'device-error',
+    message: `the device answered 0x${sw.toString(16).padStart(4, '0')} — no known sentence for it`,
+    known: false,
+  };
+}

@@ -88,7 +88,7 @@ test('US-1705 confirm-then-send: the local decode precedes the worker call, and 
 });
 
 test('US-1705 the 6A80 (bad scalar at the device) renders its named message', () => {
-  assert.equal(SW_WORDS[0x6a80], 'the device refused the data');
+  assert.match(SW_WORDS[0x6a80], /the device refused the data/);
 });
 
 test('US-1705 the scalar buffer is zeroed after the send (best-effort, documented)', () => {

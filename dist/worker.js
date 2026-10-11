@@ -46,16 +46,39 @@
   };
   function serializeError(err) {
     if (err && typeof err === "object") {
+      if (!TYPED_NAMES.has(err.name)) {
+        return {
+          name: "InternalError",
+          code: "internal-error",
+          message: String(err.message ?? err)
+        };
+      }
       return {
-        name: err.name ?? "Error",
+        name: err.name,
         message: String(err.message ?? err),
         code: err.code ?? err.name,
         sw: err.sw,
         device: err.device
       };
     }
-    return { name: "Error", message: String(err), code: "error" };
+    return { name: "InternalError", code: "internal-error", message: String(err) };
   }
+  var TYPED_NAMES = /* @__PURE__ */ new Set([
+    "DeviceAbsentError",
+    "SwError",
+    "SignerError",
+    "CtapError",
+    "CeremonyInterruptedError",
+    "UserDeniedError",
+    "UnsupportedMethodError",
+    "ForbiddenMethodError",
+    "QueueFullError",
+    "PortDisconnectedError",
+    "PermissionRequiredError",
+    "RateLimitError",
+    "PayloadTooLargeError",
+    "InternalError"
+  ]);
 
   // src/worker/dispatch.js
   var PAGE_ALLOWED_METHODS = /* @__PURE__ */ new Set([
@@ -7704,12 +7727,14 @@
     pending = null,
     portName = () => "nostr-consent",
     hostOf = hostFromSender,
-    previewOf = null
+    previewOf = null,
+    devicePresent = null
   } = {}) {
     return async function consent({ method, args, sender, requestId, preview }) {
       const host = hostOf(sender);
       const granted = await permissions.check(host, method);
       if (granted) return { host, method, grant: granted };
+      if (devicePresent) await devicePresent();
       const shown = preview ?? previewOf?.(method, args) ?? "";
       if (pending && requestId != null) {
         await pending.begin({
@@ -7771,7 +7796,12 @@
       pending,
       portName: () => "nostr-consent",
       hostOf: hostFromSender,
-      previewOf: buildPreview
+      previewOf: buildPreview,
+      // No device granted at all: typed refusal before any prompt (US-1708).
+      devicePresent: async () => {
+        const dev = await findGrantedDevice(navigator_)();
+        if (!dev) throw new DeviceAbsentError();
+      }
     });
     const handlers = createHandlers({
       device,

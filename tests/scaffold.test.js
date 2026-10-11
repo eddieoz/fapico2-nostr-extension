@@ -25,7 +25,7 @@ const exists = async (p) => {
 
 test('US-1689 the build emitted a loadable MV3 bundle', async () => {
   assert.ok(await exists(join(dist, 'manifest.json')), 'dist/manifest.json');
-  for (const chunk of ['worker.js', 'bridge.js', 'provider.js', 'popup.js', 'prompt.js']) {
+  for (const chunk of ['worker.js', 'bridge.js', 'provider.js', 'popup.js', 'prompt.js', 'ceremony.js']) {
     assert.ok(await exists(join(dist, chunk)), `dist/${chunk}`);
   }
 });

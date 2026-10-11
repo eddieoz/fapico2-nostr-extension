@@ -25,5 +25,5 @@ jobs:
       - name: CDP smoke (US-1708) — release blocker when Chrome is present
         run: npm run test:smoke
         env:
-          CHROME_PATH: chrome
+          CHROME_PATH: /usr/bin/google-chrome
         continue-on-error: false

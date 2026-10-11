@@ -6884,6 +6884,24 @@
     return true;
   }
 
+  // src/worker/error-map.js
+  var SW_ERROR_MAP = {
+    36864: { code: "OK", message: "ok" },
+    27264: { code: "SW_WRONG_DATA", message: "the device refused the data \u2014 it could not read the request" },
+    27266: { code: "SW_FILE_NOT_FOUND", message: "that identity is not on the device" },
+    27268: { code: "SW_FILE_FULL", message: "that slot is occupied \u2014 delete it first" },
+    27270: { code: "SW_INCORRECT_PARAMS", message: "the device refused the parameters" },
+    27271: { code: "SW_LC_INCONSISTENT", message: "the device refused the command length" },
+    27272: { code: "SW_REFERENCED_DATA_NOT_FOUND", message: "nothing there to operate on" },
+    27392: { code: "SW_INCORRECT_P1P2", message: "the device refused the command parameters" },
+    // The touch word: the consent window closed without a press (15 s), or a
+    // second vendor request arrived while a window was parked (the queue
+    // exists so the client never provokes that one).
+    27013: { code: "SW_TOUCH_REQUIRED", message: "touch timed out \u2014 the device asked for a touch and none came" },
+    27904: { code: "SW_INS_NOT_SUPPORTED", message: "the device does not serve that command" },
+    28416: { code: "SW_STORE_FAULT", message: "the device could not complete the operation \u2014 its store faulted" }
+  };
+
   // src/popup/keys.js
   function npubBech32(hexNpub) {
     return bech32.encode("npub", bech32.toWords(hexToBytes(hexNpub)));
@@ -6951,19 +6969,9 @@
     }
     return bytes;
   }
-  var SW_WORDS = {
-    36864: "done",
-    27264: "the device refused the data",
-    27266: "that identity is not on the device",
-    27268: "that slot is occupied \u2014 delete it first",
-    27270: "the device refused the parameters",
-    27272: "nothing to delete there",
-    27013: "touch timed out \u2014 the device asked for a touch and none came",
-    27392: "the device refused the command parameters",
-    27271: "the device refused the command length",
-    28416: "the device could not complete the operation (store fault)",
-    27904: "the device does not serve that command"
-  };
+  var SW_WORDS = Object.fromEntries(
+    Object.entries(SW_ERROR_MAP).map(([sw, v]) => [Number(sw), v.message])
+  );
 
   // src/popup/popup.js
   var api = createPortClient();

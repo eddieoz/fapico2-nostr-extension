@@ -9,6 +9,7 @@ import { createHandlers } from './handlers.js';
 import { createPermissionStore } from './permissions.js';
 import { createPromptFlow, buildPreview } from './prompt.js';
 import { createConsentGate, hostFromSender } from './consent.js';
+import { DeviceAbsentError } from '../core/loudness.js';
 import { widenSessionAccess } from './worker_boot.js';
 
 export async function bootWorker({
@@ -37,6 +38,11 @@ export async function bootWorker({
     portName: () => 'nostr-consent',
     hostOf: hostFromSender,
     previewOf: buildPreview,
+    // No device granted at all: typed refusal before any prompt (US-1708).
+    devicePresent: async () => {
+      const dev = await findGrantedDevice(navigator_)();
+      if (!dev) throw new DeviceAbsentError();
+    },
   });
 
   const handlers = createHandlers({
