@@ -9426,7 +9426,7 @@
   var CEREMONY_EXPECTED_CAPFLAGS = 0;
   function createCeremony({
     transport,
-    dev,
+    initTap,
     signer,
     nip,
     slot = 0,
@@ -9443,17 +9443,26 @@
       log(step, ok, detail);
     };
     const steps = {
-      // INIT: capFlags 0x00, version 0.1.0 — read from a raw INIT exchange so
-      // the bytes the transport discards are still checked.
+      // INIT: capFlags 0x00, version 0.1.0 — read from the transport's own
+      // INIT reply, captured by the `initTap` wrapper the page installs on
+      // `dev.oninputreport` (the bytes the transport discards, without a
+      // second INIT and without an open-ordering dance: WebHID refuses
+      // sendReport on a device that has not been opened).
       async init() {
-        const init = await rawInit(dev);
-        const version = [...init.reply.slice(13, 16)];
-        const capFlags = init.reply[16];
+        const nonce = crypto.getRandomValues(new Uint8Array(8));
+        const cid = await transport.open(nonce);
+        const reply = initTap?.reply;
+        if (!reply || reply.length < 17) throw new Error("no INIT reply captured");
+        if (!reply.slice(0, 8).every((b, i2) => b === nonce[i2])) {
+          throw new Error("INIT nonce mismatch");
+        }
+        const version = [...reply.slice(13, 16)];
+        const capFlags = reply[16];
         const versionOk = version[0] === CEREMONY_EXPECTED_VERSION[0] && version[1] === CEREMONY_EXPECTED_VERSION[1] && version[2] === CEREMONY_EXPECTED_VERSION[2];
         if (!versionOk || capFlags !== CEREMONY_EXPECTED_CAPFLAGS) {
           throw new Error(`INIT mismatch \u2014 version ${version.join(".")} capFlags 0x${capFlags?.toString(16)}`);
         }
-        const cid = await transport.open(init.nonce);
+        void cid;
         return { sw: 36864, detail: { cid: [...cid].map((b) => b.toString(16).padStart(2, "0")).join(""), version: version.join("."), capFlags } };
       },
       // Generate key with touch: 9000 + npub(32).
@@ -9548,37 +9557,6 @@
   function hex(bytes) {
     return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
   }
-  function rawInit(dev, { timeoutMs = 5e3 } = {}) {
-    const nonce = crypto.getRandomValues(new Uint8Array(8));
-    const frame = new Uint8Array(REPORT_SIZE);
-    frame.set(BROADCAST_CID, 0);
-    frame[4] = CMD_INIT | 128;
-    frame[5] = 0;
-    frame[6] = nonce.length;
-    frame.set(nonce, 7);
-    return new Promise((resolve, reject) => {
-      const previous = dev.oninputreport;
-      const timer = setTimeout(() => {
-        dev.oninputreport = previous;
-        reject(new Error("no INIT reply inside the budget"));
-      }, timeoutMs);
-      dev.oninputreport = (report) => {
-        const data = report.data;
-        if (!data || data.length !== REPORT_SIZE) return;
-        if (data.slice(0, 4).join() !== BROADCAST_CID.join()) return;
-        if (data[4] !== (CMD_INIT | 128)) return;
-        clearTimeout(timer);
-        dev.oninputreport = previous;
-        const reply = data.slice(7, 7 + FIRST_PAYLOAD);
-        resolve({ nonce, reply: reply.slice(0, 17) });
-      };
-      dev.sendReport(0, frame).catch((err) => {
-        clearTimeout(timer);
-        dev.oninputreport = previous;
-        reject(err);
-      });
-    });
-  }
 
   // src/manual/ceremony-page.js
   var $ = (id) => document.getElementById(id);
@@ -9607,11 +9585,25 @@
         return;
       }
       const transport = new CtapVendorTransport(dev);
+      const initTap = {};
+      {
+        const prev = dev.oninputreport;
+        dev.oninputreport = (report) => {
+          try {
+            const d = report?.data;
+            if (d && d.length === 64 && d[4] === (6 | 128) && d.slice(0, 4).join() === "255,255,255,255") {
+              initTap.reply = d.slice(7, 24);
+            }
+          } catch {
+          }
+          prev(report);
+        };
+      }
       const signer = new FapicoSigner(transport);
       const nip = new FapicoNip44(transport);
       ceremony = createCeremony({
         transport,
-        dev,
+        initTap,
         signer,
         nip,
         crypto: {

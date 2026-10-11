@@ -7,8 +7,6 @@
 // drives it against the mock device; tests/manual/ceremony.html is the
 // browser wrapper that supplies the real WebHID device.
 
-import { BROADCAST_CID, CMD_INIT, FIRST_PAYLOAD, REPORT_SIZE } from '../core/ctaphid.js';
-
 export const CEREMONY_STEPS = ['init', 'generate', 'pubkey', 'sign', 'nip44', 'delete'];
 
 export const CEREMONY_EXPECTED_VERSION = [0x00, 0x01, 0x00]; // v0.1.0
@@ -16,16 +14,16 @@ export const CEREMONY_EXPECTED_CAPFLAGS = 0x00;
 
 /**
  * `transport` is an opened-or-openable CtapVendorTransport-shaped object:
- * `open()`, `vendor(cmd, idx, arg, opts)`. `dev` is the raw WebHID device
- * (the init step does its own raw INIT so it can read the capFlags byte the
- * transport discards). `signer`/`nip` are the seam implementations over the
+ * `open(nonce)`, `vendor(cmd, idx, arg, opts)`. `initTap` is the page's
+ * oninputreport capture of the INIT reply (the capFlags byte the transport
+ * discards). `signer`/`nip` are the seam implementations over the
  * same transport (for the ground-truth verify), and `sighashOf`/`verify`/
  * `schnorrVerify`/`nip44RoundTrip` are injected so the node test can use
  * nostr-tools while the page uses the same functions bundled.
  */
 export function createCeremony({
   transport,
-  dev,
+  initTap,
   signer,
   nip,
   slot = 0,
@@ -43,12 +41,21 @@ export function createCeremony({
   };
 
   const steps = {
-    // INIT: capFlags 0x00, version 0.1.0 — read from a raw INIT exchange so
-    // the bytes the transport discards are still checked.
+    // INIT: capFlags 0x00, version 0.1.0 — read from the transport's own
+    // INIT reply, captured by the `initTap` wrapper the page installs on
+    // `dev.oninputreport` (the bytes the transport discards, without a
+    // second INIT and without an open-ordering dance: WebHID refuses
+    // sendReport on a device that has not been opened).
     async init() {
-      const init = await rawInit(dev);
-      const version = [...init.reply.slice(13, 16)];
-      const capFlags = init.reply[16];
+      const nonce = crypto.getRandomValues(new Uint8Array(8));
+      const cid = await transport.open(nonce);
+      const reply = initTap?.reply;
+      if (!reply || reply.length < 17) throw new Error('no INIT reply captured');
+      if (!reply.slice(0, 8).every((b, i) => b === nonce[i])) {
+        throw new Error('INIT nonce mismatch');
+      }
+      const version = [...reply.slice(13, 16)];
+      const capFlags = reply[16];
       const versionOk =
         version[0] === CEREMONY_EXPECTED_VERSION[0] &&
         version[1] === CEREMONY_EXPECTED_VERSION[1] &&
@@ -56,7 +63,7 @@ export function createCeremony({
       if (!versionOk || capFlags !== CEREMONY_EXPECTED_CAPFLAGS) {
         throw new Error(`INIT mismatch — version ${version.join('.')} capFlags 0x${capFlags?.toString(16)}`);
       }
-      const cid = await transport.open(init.nonce);
+      void cid;
       return { sw: 0x9000, detail: { cid: [...cid].map((b) => b.toString(16).padStart(2, '0')).join(''), version: version.join('.'), capFlags } };
     },
 
@@ -160,43 +167,4 @@ function swError(cmdName, sw) {
 
 function hex(bytes) {
   return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-/**
- * The raw INIT exchange: broadcast-channel INIT frame out, the 17-byte
- * reply captured from the device's own reports — so the ceremony sees the
- * capFlags byte the transport's open() does not surface.
- */
-export function rawInit(dev, { timeoutMs = 5000 } = {}) {
-  const nonce = crypto.getRandomValues(new Uint8Array(8));
-  const frame = new Uint8Array(REPORT_SIZE);
-  frame.set(BROADCAST_CID, 0);
-  frame[4] = CMD_INIT | 0x80;
-  frame[5] = 0;
-  frame[6] = nonce.length;
-  frame.set(nonce, 7);
-  return new Promise((resolve, reject) => {
-    const previous = dev.oninputreport;
-    const timer = setTimeout(() => {
-      dev.oninputreport = previous;
-      reject(new Error('no INIT reply inside the budget'));
-    }, timeoutMs);
-    dev.oninputreport = (report) => {
-      const data = report.data;
-      if (!data || data.length !== REPORT_SIZE) return;
-      if (data.slice(0, 4).join() !== BROADCAST_CID.join()) return;
-      if (data[4] !== (CMD_INIT | 0x80)) return;
-      clearTimeout(timer);
-      dev.oninputreport = previous;
-      const reply = data.slice(7, 7 + FIRST_PAYLOAD);
-      resolve({ nonce, reply: reply.slice(0, 17) });
-    };
-    dev
-      .sendReport(0, frame)
-      .catch((err) => {
-        clearTimeout(timer);
-        dev.oninputreport = previous;
-        reject(err);
-      });
-  });
 }

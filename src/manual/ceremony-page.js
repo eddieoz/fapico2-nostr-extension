@@ -47,11 +47,27 @@ $('start').addEventListener('click', async () => {
       return;
     }
     const transport = new CtapVendorTransport(dev);
+    // The INIT tap: capture the reply the transport discards (capFlags at
+    // byte 16, vendor version at 13..15) while it flows to the transport's
+    // own pump.
+    const initTap = {};
+    {
+      const prev = dev.oninputreport;
+      dev.oninputreport = (report) => {
+        try {
+          const d = report?.data;
+          if (d && d.length === 64 && d[4] === (0x06 | 0x80) && d.slice(0, 4).join() === '255,255,255,255') {
+            initTap.reply = d.slice(7, 24);
+          }
+        } catch { /* not the INIT reply */ }
+        prev(report);
+      };
+    }
     const signer = new FapicoSigner(transport);
     const nip = new FapicoNip44(transport);
     ceremony = createCeremony({
       transport,
-      dev,
+      initTap,
       signer,
       nip,
       crypto: {

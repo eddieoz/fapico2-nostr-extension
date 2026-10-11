@@ -10,10 +10,9 @@ import { schnorr } from '@noble/curves/secp256k1.js';
 import { hexToBytes } from '@noble/hashes/utils.js';
 import { getEventHash, verifyEvent } from 'nostr-tools';
 
-import { createCeremony, rawInit, CEREMONY_STEPS } from '../../src/manual/ceremony-steps.js';
+import { createCeremony, CEREMONY_STEPS } from '../../src/manual/ceremony-steps.js';
 import { FapicoSigner, FapicoNip44 } from '../../src/core/seams.js';
 import { MockDevice } from '../mock_device.js';
-import { BROADCAST_CID, CMD_INIT, REPORT_SIZE } from '../../src/core/ctaphid.js';
 
 const CID = new Uint8Array([0, 0, 0, 0x2a]);
 
@@ -39,28 +38,15 @@ function ceremonyTransport({ generateSw = 0x9000, deleteSw = 0x9000, pubkeySw = 
   };
 }
 
-function fakeDev(initReplyPayload, { initTimeoutMs } = {}) {
-  return {
-    oninputreport: null,
-    __initTimeoutMs: initTimeoutMs,
-    async sendReport({ data }) {
-      if (initReplyPayload) {
-        this.oninputreport({ data: initReplyPayload, reportId: 0 });
-      }
-    },
-  };
+/** The tap the page installs: captures the 17-byte INIT reply payload. */
+function initTap() {
+  return { reply: null };
 }
 
-function initFrame(nonce) {
-  // nonce(8) + cid(4) + verIface(1) + version 0.1.0 (3) + capFlags 0x00 (1)
-  // = the 17-byte INIT reply, exactly as the ctaphid tests build it.
-  const frame = new Uint8Array(REPORT_SIZE);
-  frame.set(BROADCAST_CID, 0);
-  frame[4] = CMD_INIT | 0x80;
-  frame[5] = 0;
-  frame[6] = 17;
-  frame.set([...nonce, ...CID, 0x02, 0x00, 0x01, 0x00, 0x00], 7);
-  return frame;
+/** The 17-byte INIT reply payload (nonce echo + CID + verIface + version
+ *  0.1.0 + capFlags 0x00), as the ctaphid tests build it. */
+function initReplyPayload(nonce, { version = [0x00, 0x01, 0x00], capFlags = 0x00 } = {}) {
+  return new Uint8Array([...nonce, ...CID, 0x02, ...version, capFlags]);
 }
 
 // The same injected crypto the browser page uses — nostr-tools ground truth.
@@ -80,9 +66,15 @@ const crypto = {
 
 function rig(opts = {}) {
   const transport = ceremonyTransport(opts);
+  const tap = initTap();
+  transport.open = async (nonce) => {
+    transport.calls.push({ cmd: 'INIT' });
+    tap.reply = initReplyPayload(nonce, opts.init);
+    return CID;
+  };
   const ceremony = createCeremony({
     transport,
-    dev: fakeDev(initFrame(new Uint8Array(8).fill(7))),
+    initTap: tap,
     signer: new FapicoSigner(transport),
     nip: new FapicoNip44(transport),
     crypto,
@@ -134,14 +126,18 @@ test('US-1709 a failed step blocks the next — the ceremony is ordered', async 
   assert.equal(ceremony.results.length, 3, 'the results name exactly what ran');
 });
 
-test('US-1709 an INIT mismatch blocks at the first step', async () => {
+test('US-1709 an INIT version mismatch blocks at the first step', async () => {
   const transport = ceremonyTransport();
-  // A hostile wrong version in the raw INIT reply.
-  const badFrame = initFrame(new Uint8Array(8).fill(7));
-  badFrame[7 + 13 + 2] = 0x09; // the version-major byte
+  const tap = initTap();
+  transport.open = async (nonce) => {
+    transport.calls.push({ cmd: 'INIT' });
+    // A hostile wrong version in the captured reply.
+    tap.reply = initReplyPayload(nonce, { version: [0x09, 0x00, 0x01] });
+    return CID;
+  };
   const bad = createCeremony({
     transport,
-    dev: fakeDev(badFrame),
+    initTap: tap,
     signer: new FapicoSigner(transport),
     nip: new FapicoNip44(transport),
     crypto,
@@ -153,19 +149,47 @@ test('US-1709 an INIT mismatch blocks at the first step', async () => {
   assert.equal((await bad.runNext()).blocked, true);
 });
 
-test('US-1709 rawInit reads the capFlags byte the transport discards', async () => {
-  const nonce = new Uint8Array(8).fill(9);
-  const dev = fakeDev(initFrame(nonce));
-  const { reply } = await rawInit(dev);
-  assert.equal(reply.length, 17, 'the 17-byte INIT reply');
-  assert.equal(reply[16], 0x00, 'capFlags at byte 16');
-  assert.deepEqual([...reply.slice(13, 16)], [0x00, 0x01, 0x00], 'version 0.1.0 at 13..15');
+test('US-1709 a nonce-mismatched INIT reply is refused, not adopted', async () => {
+  const transport = ceremonyTransport();
+  const tap = initTap();
+  transport.open = async (nonce) => {
+    transport.calls.push({ cmd: 'INIT' });
+    tap.reply = initReplyPayload(new Uint8Array(8).fill(0x9)); // echoes a different nonce
+    return CID;
+  };
+  const bad = createCeremony({
+    transport,
+    initTap: tap,
+    signer: new FapicoSigner(transport),
+    nip: new FapicoNip44(transport),
+    crypto,
+  });
+  const out = await bad.runNext();
+  assert.equal(out.ok, false);
+  assert.match(out.error, /nonce mismatch/);
 });
 
-test('US-1709 a missing INIT reply is a typed failure, not a hang', async () => {
-  const dev = { oninputreport: null, async sendReport() { /* silence */ } };
-  await assert.rejects(
-    () => rawInit(dev, { timeoutMs: 30 }),
-    /no INIT reply/,
-  );
+test('US-1709 the init step reads the capFlags byte the transport discards', async () => {
+  const { ceremony } = rig();
+  const out = await ceremony.runNext();
+  assert.equal(out.step, 'init');
+  assert.equal(out.ok, true);
+  assert.equal(out.detail.capFlags, 0x00, 'capFlags at byte 16');
+  assert.equal(out.detail.version, '0.1.0', 'version at 13..15');
+  assert.equal(out.detail.cid, '0000002a');
+  assert.equal(ceremony.results[0].capFlags, 0x00, 'the recorded result carries it for the release notes');
+});
+
+test('US-1709 a missing INIT tap capture is a typed failure, not a hang', async () => {
+  const transport = ceremonyTransport();
+  const bad = createCeremony({
+    transport,
+    initTap: { reply: null }, // the tap saw nothing
+    signer: new FapicoSigner(transport),
+    nip: new FapicoNip44(transport),
+    crypto,
+  });
+  const out = await bad.runNext();
+  assert.equal(out.ok, false);
+  assert.match(out.error, /no INIT reply captured/);
 });
