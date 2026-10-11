@@ -213,9 +213,9 @@ export function frameReports(channel, cmd, payload) {
 // --- the transport ---------------------------------------------------------
 
 // A CTAPHID transaction over one open WebHID device. `dev` is anything with
-// the WebHID surface used here — `open()`, `close()`, `sendReport(data,
-// data})`, and an assignable `oninputreport` — so the tests drive it with a
-// scripted fake and the page passes a real `HIDDevice`.
+// the WebHID surface used here — `open()`, `close()`,
+// `sendReport(reportId, data)` (the real WebHID signature), and an
+// assignable `oninputreport` — so the tests drive it with a scripted
 //
 // One transaction at a time (the device serves one per interface, §A.8.3
 // #9); every tab must re-INIT (a new CID) rather than reusing another tab's
