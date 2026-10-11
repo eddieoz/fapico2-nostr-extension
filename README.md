@@ -28,7 +28,9 @@ private, gitignored, the `fapico2` workspace convention).
 - MIT. The hardware client core is ported verbatim from OpenXrypt
   `feat/nostr` (MIT, © Edilson Osorio Jr) at HEAD `d431b00` — `ctaphid.js`,
   `seams.js`, `loudness.js`, `batch.js`, `window_nostr.js`, byte-identical
-  (asserted by a diff test against a committed snapshot). The ported test
+  except a small, declared allow-list of hardware-forced fixes (the real
+  WebHID `sendReport(reportId, data)` signature and Chrome's DataView report
+  data — both named by live hardware and recorded in the fidelity test). The ported test
   suite is the six nostr test files: **51 tests**. (The epic's "78-test
   suite" counts OpenXrypt's whole tree; the other 27 tests are the PGP
   stack, which decision D1 keeps out of scope.)
@@ -86,6 +88,9 @@ a human runs `tests/manual/ceremony.html` against a flashed board
 
 Steps are ordered: a failed step blocks the next, and a partial pass is not a
 pass. The ceremony's JSON results are copied into the release notes (the
-`fapico2` hardware-matrix convention). CI additionally runs the CDP smoke
+`fapico2` hardware-matrix convention) — the current record lives in
+[docs/ceremony-results.md](docs/ceremony-results.md): **PASSED 2026-10-11**
+on `feat/nostr` `a795d0d` (all six steps `9000`, signature nostr-tools-
+verified, nip44 round trip byte-exact, delete npub-echo matched). CI additionally runs the CDP smoke
 gate (US-1708) on real Chrome — `window.nostr` must install and reject
 absence typed — a failure there is a release blocker too.
