@@ -37,6 +37,8 @@ export const TRUSTED_ONLY_METHODS = new Set([
   'revoke_grant',
   'revoke_all',
   'prompt_decision',
+  'get_active_slot',
+  'set_active_slot',
 ]);
 
 /** The Flamingo sender gate, original implementation. */

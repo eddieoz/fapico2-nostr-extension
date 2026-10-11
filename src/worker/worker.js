@@ -9,6 +9,7 @@ import { createHandlers } from './handlers.js';
 import { createPermissionStore } from './permissions.js';
 import { createPromptFlow, buildPreview } from './prompt.js';
 import { createConsentGate, hostFromSender } from './consent.js';
+import { createActiveSlotStore } from './active-slot.js';
 import { DeviceAbsentError } from '../core/loudness.js';
 import { widenSessionAccess } from './worker_boot.js';
 
@@ -45,6 +46,7 @@ export async function bootWorker({
     },
   });
 
+  const activeSlot = createActiveSlotStore({ storage: chrome_.storage.local });
   const handlers = createHandlers({
     device,
     consent,
@@ -52,6 +54,8 @@ export async function bootWorker({
     listGrants: () => permissions.list(),
     revoke: (host) => permissions.revoke(host),
     onPromptDecision: async ([decision]) => prompt.decide(decision ?? {}),
+    getActiveSlot: activeSlot.get,
+    setActiveSlot: activeSlot.set,
   });
   const route = createDispatch(handlers);
 

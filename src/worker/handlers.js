@@ -8,7 +8,7 @@
 // handlers: `consent` is provided by the permission store + prompt
 // orchestration (US-1699/1700); a trusted extension-page sender skips it.
 
-import { FapicoSigner, FapicoNip44, SwError } from '../core/seams.js';
+import { FapicoSigner, FapicoNip44, SwError, SignerError } from '../core/seams.js';
 import { NOSTR_CMD, SW } from '../core/ctaphid.js';
 import { DeviceAbsentError } from '../core/loudness.js';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
@@ -21,12 +21,36 @@ export function createHandlers({
   revoke = async () => {},
   onPromptDecision = null,
   now = () => Date.now(),
+  getActiveSlot = async () => 0,
+  setActiveSlot = async () => {},
 }) {
   const transport = {
     vendor: (cmd, idx, arg, opts = {}) => device.run(cmd, idx, arg, opts),
   };
-  const signer = new FapicoSigner(transport);
-  const cipher = new FapicoNip44(transport);
+
+  // US-1710 — one seam object per request: the factories below are called
+  // per invocation, never a shared instance whose idx could be mutated
+  // mid-flight by a concurrent request. FapicoSigner's constructor is two
+  // field assignments, so per-request construction is free.
+  const signerFor = (slot) => new FapicoSigner(transport, { idx: slot });
+  const cipherFor = (slot) => new FapicoNip44(transport, { idx: slot });
+
+  /** US-1710 — the active slot, resolved once per request: absent → 0
+   *  (first run); present-but-invalid or an unreadable setting → typed
+   *  BAD_SLOT BEFORE any device frame — never a silent sign-as-slot-0. */
+  const activeSlot = async () => {
+    let v;
+    try {
+      v = await getActiveSlot();
+    } catch {
+      throw new SignerError('BAD_SLOT', 'the active-key setting could not be read — re-pick the key in the popup');
+    }
+    if (v == null) return 0;
+    if (!Number.isInteger(v) || v < 0 || v > 7) {
+      throw new SignerError('BAD_SLOT', 'the stored active key is not a slot index — re-pick the key in the popup');
+    }
+    return v;
+  };
 
   // The page-facing methods: consent first (per-host, per-method), then the
   // device. A trusted extension-page sender (the popup) skips the prompt.
@@ -84,6 +108,16 @@ export function createHandlers({
       // (it IS the connect flow, not a background poll).
       const res = await device.ping({ force: true });
       return { state: res.sw === SW.OK ? 'connected' : 'error', sw: res.sw };
+    },
+
+    get_active_slot: async () => ({ slot: await activeSlot() }),
+
+    set_active_slot: async ([slot]) => {
+      if (!Number.isInteger(slot) || slot < 0 || slot > 7) {
+        throw Object.assign(new Error('slot must be 0..7'), { name: 'SignerError', code: 'BAD_SLOT' });
+      }
+      await setActiveSlot(slot);
+      return {};
     },
 
     generate_key: async ([slot]) => {
@@ -172,24 +206,25 @@ export function createHandlers({
     prompt_decision: onPromptDecision ?? (async () => ({})),
 
     // --- page-allowed (relayed; consent-gated for tab senders) -------------
-    get_public_key: pageMethod('get_public_key', async ([idx = 0]) =>
-      bytesToHex(await runOk(NOSTR_CMD.GET_PUBKEY, idx, new Uint8Array(0)).then((d) => {
-        if (d.length < 32) {
-          throw Object.assign(new Error('GET_PUBKEY answered 9000 with a short npub'), {
-            name: 'SignerError', code: 'DEVICE_REPLY_MALFORMED',
-          });
-        }
-        return d.subarray(0, 32);
-      }))),
 
-    sign_event: pageMethod('sign_event', async ([event]) => signer.signEvent(event)),
+    // US-1710 — the page's args are dropped: the active key is the user's
+    // choice, and a raw marker frame must not enumerate other slots.
+    // NIP-07's getPublicKey() takes no argument; the provider never sends
+    // one. Resolved once per request, after the consent gate.
+    get_public_key: pageMethod('get_public_key', async () =>
+      signerFor(await activeSlot()).getPublicKey()),
 
-    list_keys: pageMethod('list_keys', async () => signer.listKeys()),
+    sign_event: pageMethod('sign_event', async ([event]) =>
+      signerFor(await activeSlot()).signEvent(event)),
+
+    list_keys: pageMethod('list_keys', async () =>
+      // LIST_KEYS ignores idx on the wire (§2.2) — the 0 is inert.
+      signerFor(0).listKeys()),
 
     nip44_encrypt: pageMethod('nip44_encrypt', async ([peer, plaintext]) =>
-      [...(await cipher.encrypt(peer, hexToBytes(plaintext)))]),
+      [...(await cipherFor(await activeSlot()).encrypt(peer, hexToBytes(plaintext)))]),
 
     nip44_decrypt: pageMethod('nip44_decrypt', async ([peer, payload]) =>
-      [...(await cipher.decrypt(peer, new Uint8Array(payload)))]),
+      [...(await cipherFor(await activeSlot()).decrypt(peer, new Uint8Array(payload)))]),
   };
 }

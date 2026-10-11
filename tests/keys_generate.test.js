@@ -106,7 +106,8 @@ test('US-1704 the generate rides the serialization queue — a parallel page sig
   const handlers = createHandlers({ device });
   const results = await Promise.all([
     call(handlers, 'generate_key', [1]),
-    call(handlers, 'get_public_key', [0]),
+    // US-1710: page args are dropped — get_public_key rides the active slot.
+    call(handlers, 'get_public_key', []),
   ]);
   assert.equal(results[0].npub, bytesToHex(NPUB));
   assert.equal(maxInFlight, 1, 'strictly one vendor transaction at a time');

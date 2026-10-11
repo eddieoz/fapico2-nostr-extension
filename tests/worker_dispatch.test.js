@@ -114,3 +114,36 @@ test('US-1692 a frame without an id or method is ignored (null reply)', async ()
   assert.equal(await dispatch({ id: 6 }, trustedSender), null);
   assert.equal(await dispatch({ method: 'echo' }, trustedSender), null);
 });
+
+// US-1710 — the documented closure invariant, now enforced: every method in
+// the real handler table is registered in exactly one of the two sets, and
+// the active-slot handlers are trusted-only (a tab sender is refused before
+// the handler runs).
+import { createDeviceOwner } from '../src/worker/device.js';
+import { createHandlers } from '../src/worker/handlers.js';
+
+test('US-1710 the real handler table is closed over PAGE_ALLOWED ∪ TRUSTED_ONLY', async () => {
+  const device = createDeviceOwner({ getGrantedDevice: async () => null });
+  const handlers = createHandlers({ device });
+  for (const name of Object.keys(handlers)) {
+    assert.ok(
+      PAGE_ALLOWED_METHODS.has(name) || TRUSTED_ONLY_METHODS.has(name),
+      `${name} is in the table but in neither method set`,
+    );
+  }
+  assert.ok(TRUSTED_ONLY_METHODS.has('get_active_slot'));
+  assert.ok(TRUSTED_ONLY_METHODS.has('set_active_slot'));
+});
+
+test('US-1710 set_active_slot from a tab sender is forbidden-method; the handler never ran', async () => {
+  const ran = [];
+  const { dispatch } = testDispatch({
+    set_active_slot: async () => {
+      ran.push('set_active_slot');
+      return {};
+    },
+  });
+  const reply = await dispatch({ id: 7, method: 'set_active_slot', args: [2] }, tabSender);
+  assert.equal(reply.error.code, 'forbidden-method');
+  assert.equal(ran.length, 0, 'the handler never ran');
+});

@@ -7397,13 +7397,29 @@
     revoke = async () => {
     },
     onPromptDecision = null,
-    now: now2 = () => Date.now()
+    now: now2 = () => Date.now(),
+    getActiveSlot = async () => 0,
+    setActiveSlot = async () => {
+    }
   }) {
     const transport = {
       vendor: (cmd, idx, arg, opts = {}) => device.run(cmd, idx, arg, opts)
     };
-    const signer = new FapicoSigner(transport);
-    const cipher = new FapicoNip44(transport);
+    const signerFor = (slot) => new FapicoSigner(transport, { idx: slot });
+    const cipherFor = (slot) => new FapicoNip44(transport, { idx: slot });
+    const activeSlot = async () => {
+      let v;
+      try {
+        v = await getActiveSlot();
+      } catch {
+        throw new SignerError("BAD_SLOT", "the active-key setting could not be read \u2014 re-pick the key in the popup");
+      }
+      if (v == null) return 0;
+      if (!Number.isInteger(v) || v < 0 || v > 7) {
+        throw new SignerError("BAD_SLOT", "the stored active key is not a slot index \u2014 re-pick the key in the popup");
+      }
+      return v;
+    };
     const pageMethod = (method, fn) => async (args, ctx) => {
       if (!ctx.trusted) {
         await consent({
@@ -7446,6 +7462,14 @@
         device.forget();
         const res = await device.ping({ force: true });
         return { state: res.sw === SW.OK ? "connected" : "error", sw: res.sw };
+      },
+      get_active_slot: async () => ({ slot: await activeSlot() }),
+      set_active_slot: async ([slot]) => {
+        if (!Number.isInteger(slot) || slot < 0 || slot > 7) {
+          throw Object.assign(new Error("slot must be 0..7"), { name: "SignerError", code: "BAD_SLOT" });
+        }
+        await setActiveSlot(slot);
+        return {};
       },
       generate_key: async ([slot]) => {
         if (!Number.isInteger(slot) || slot < 0 || slot > 7) {
@@ -7529,19 +7553,18 @@
       revoke_all: async () => revoke(null),
       prompt_decision: onPromptDecision ?? (async () => ({})),
       // --- page-allowed (relayed; consent-gated for tab senders) -------------
-      get_public_key: pageMethod("get_public_key", async ([idx = 0]) => bytesToHex(await runOk(NOSTR_CMD.GET_PUBKEY, idx, new Uint8Array(0)).then((d) => {
-        if (d.length < 32) {
-          throw Object.assign(new Error("GET_PUBKEY answered 9000 with a short npub"), {
-            name: "SignerError",
-            code: "DEVICE_REPLY_MALFORMED"
-          });
-        }
-        return d.subarray(0, 32);
-      }))),
-      sign_event: pageMethod("sign_event", async ([event]) => signer.signEvent(event)),
-      list_keys: pageMethod("list_keys", async () => signer.listKeys()),
-      nip44_encrypt: pageMethod("nip44_encrypt", async ([peer, plaintext]) => [...await cipher.encrypt(peer, hexToBytes(plaintext))]),
-      nip44_decrypt: pageMethod("nip44_decrypt", async ([peer, payload]) => [...await cipher.decrypt(peer, new Uint8Array(payload))])
+      // US-1710 — the page's args are dropped: the active key is the user's
+      // choice, and a raw marker frame must not enumerate other slots.
+      // NIP-07's getPublicKey() takes no argument; the provider never sends
+      // one. Resolved once per request, after the consent gate.
+      get_public_key: pageMethod("get_public_key", async () => signerFor(await activeSlot()).getPublicKey()),
+      sign_event: pageMethod("sign_event", async ([event]) => signerFor(await activeSlot()).signEvent(event)),
+      list_keys: pageMethod("list_keys", async () => (
+        // LIST_KEYS ignores idx on the wire (§2.2) — the 0 is inert.
+        signerFor(0).listKeys()
+      )),
+      nip44_encrypt: pageMethod("nip44_encrypt", async ([peer, plaintext]) => [...await cipherFor(await activeSlot()).encrypt(peer, hexToBytes(plaintext))]),
+      nip44_decrypt: pageMethod("nip44_decrypt", async ([peer, payload]) => [...await cipherFor(await activeSlot()).decrypt(peer, new Uint8Array(payload))])
     };
   }
 
@@ -7771,6 +7794,20 @@
     };
   }
 
+  // src/worker/active-slot.js
+  var ACTIVE_SLOT_KEY = "nostrActiveSlot";
+  function createActiveSlotStore({ storage }) {
+    return {
+      async get() {
+        const got = await storage.get(ACTIVE_SLOT_KEY);
+        return got?.[ACTIVE_SLOT_KEY];
+      },
+      async set(slot) {
+        await storage.set({ [ACTIVE_SLOT_KEY]: slot });
+      }
+    };
+  }
+
   // src/worker/worker_boot.js
   async function widenSessionAccess(chrome_ = chrome) {
     try {
@@ -7807,13 +7844,16 @@
         if (!dev) throw new DeviceAbsentError();
       }
     });
+    const activeSlot = createActiveSlotStore({ storage: chrome_.storage.local });
     const handlers = createHandlers({
       device,
       consent,
       previewOf: buildPreview,
       listGrants: () => permissions.list(),
       revoke: (host) => permissions.revoke(host),
-      onPromptDecision: async ([decision]) => prompt.decide(decision ?? {})
+      onPromptDecision: async ([decision]) => prompt.decide(decision ?? {}),
+      getActiveSlot: activeSlot.get,
+      setActiveSlot: activeSlot.set
     });
     const route = createDispatch(handlers);
     chrome_.runtime.onConnect.addListener((port) => {
