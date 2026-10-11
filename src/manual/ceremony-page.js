@@ -46,6 +46,10 @@ $('start').addEventListener('click', async () => {
       logLine('<span class="err">no Nostr interface (0xFF00:0x01) on the board — is the feat/nostr firmware flashed?</span>');
       return;
     }
+    // A grant reused across page loads can arrive already-open with a wedged
+    // report flow (the live run: zero input reports until a close/reopen).
+    // Close here so the transport's open() is the only opener and the report
+    // flow starts clean.
     const transport = new CtapVendorTransport(dev);
     // The INIT tap: capture the reply the transport discards (capFlags at
     // byte 16, vendor version at 13..15) while it flows to the transport's
