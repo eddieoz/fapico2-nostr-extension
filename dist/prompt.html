@@ -6,7 +6,30 @@
   <link rel="stylesheet" href="prompt.css">
 </head>
 <body>
-  <main id="app"></main>
+  <header><h1>fapico2 nostr — approval</h1></header>
+
+  <div class="request-host" id="host">…</div>
+  <div class="request-wants" id="wants">…</div>
+
+  <p class="hint" id="hint"></p>
+
+  <label class="check">
+    <input type="checkbox" id="remember">
+    Remember this site (you will not be asked again on this site for this —
+    the device touch is still required every time).
+  </label>
+
+  <div class="actions">
+    <button id="deny" class="deny">Deny</button>
+    <button id="approve" class="approve">Approve</button>
+  </div>
+
+  <p class="footnote">
+    After your approval the device itself asks for a touch — the physical
+    press, not this window, is the final consent. No key material is ever
+    shown or stored here.
+  </p>
+
   <script src="prompt.js"></script>
 </body>
 </html>

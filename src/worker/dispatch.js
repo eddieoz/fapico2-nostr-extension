@@ -87,7 +87,12 @@ export function createDispatch(methods, { extensionId = chrome.runtime.id } = {}
     }
 
     try {
-      const result = await methods[method](frame.args ?? [], { sender, port, trusted });
+      const result = await methods[method](frame.args ?? [], {
+        sender,
+        port,
+        trusted,
+        requestId: id,
+      });
       return reply({ result });
     } catch (err) {
       return reply({ error: serializeError(err) });

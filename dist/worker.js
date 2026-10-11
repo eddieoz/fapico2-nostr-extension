@@ -39,6 +39,11 @@
     code: "CEREMONY_INTERRUPTED",
     message: "ceremony interrupted \u2014 the worker restarted mid-operation; try again"
   };
+  var USER_DENIED = {
+    name: "UserDeniedError",
+    code: "user-denied",
+    message: "the request was denied"
+  };
   function serializeError(err) {
     if (err && typeof err === "object") {
       return {
@@ -94,7 +99,12 @@
         });
       }
       try {
-        const result = await methods[method](frame.args ?? [], { sender, port, trusted });
+        const result = await methods[method](frame.args ?? [], {
+          sender,
+          port,
+          trusted,
+          requestId: id
+        });
         return reply({ result });
       } catch (err) {
         return reply({ error: serializeError(err) });
@@ -7358,6 +7368,7 @@
   function createHandlers({
     device,
     consent = async ({ method }) => ({ remember: false }),
+    previewOf = null,
     listGrants = async () => [],
     revoke = async () => {
     },
@@ -7370,7 +7381,15 @@
     const signer = new FapicoSigner(transport);
     const cipher = new FapicoNip44(transport);
     const pageMethod = (method, fn) => async (args, ctx) => {
-      if (!ctx.trusted) await consent({ method, args, sender: ctx.sender });
+      if (!ctx.trusted) {
+        await consent({
+          method,
+          args,
+          sender: ctx.sender,
+          requestId: ctx.requestId,
+          preview: previewOf?.(method, args)
+        });
+      }
       return fn(args, ctx);
     };
     const runOk = async (cmd, idx, arg) => {
@@ -7431,7 +7450,7 @@
         }
         return { npub: bytesToHex(data.subarray(0, 32)) };
       },
-      delete_key: async ([slot]) => {
+      delete_key: async ([slot, expectedNpub]) => {
         if (!Number.isInteger(slot) || slot < 0 || slot > 7) {
           throw Object.assign(new Error("slot must be 0..7"), { name: "SignerError", code: "BAD_SLOT" });
         }
@@ -7442,7 +7461,14 @@
             code: "DEVICE_REPLY_MALFORMED"
           });
         }
-        return { npub: bytesToHex(data.subarray(0, 32)) };
+        const echoed = bytesToHex(data.subarray(0, 32));
+        if (expectedNpub && echoed !== expectedNpub) {
+          throw Object.assign(
+            new Error(`the device echoed a different identity than the one requested \u2014 store fault, not success`),
+            { name: "SignerError", code: "STORE_FAULT" }
+          );
+        }
+        return { npub: echoed };
       },
       set_label: async ([slot, label]) => {
         if (!Number.isInteger(slot) || slot < 0 || slot > 7) {
@@ -7492,6 +7518,230 @@
     };
   }
 
+  // src/worker/permissions.js
+  var GRANTS_KEY = "grants";
+  var GRANTABLE_METHODS = /* @__PURE__ */ new Set([
+    "get_public_key",
+    "sign_event",
+    "list_keys",
+    "nip44_encrypt",
+    "nip44_decrypt"
+  ]);
+  function createPermissionStore({ storage, now: now2 = () => Date.now() } = {}) {
+    const sessionGrants = /* @__PURE__ */ new Set();
+    async function readRaw() {
+      const got = await storage.get(GRANTS_KEY);
+      const raw = got?.[GRANTS_KEY];
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+      const out = {};
+      for (const [host, rec] of Object.entries(raw)) {
+        if (typeof host === "string" && rec && typeof rec === "object" && typeof rec.grantedAt === "number" && rec.methods && typeof rec.methods === "object") {
+          const methods = {};
+          for (const m of Object.keys(rec.methods)) {
+            if (GRANTABLE_METHODS.has(m) && typeof rec.methods[m] === "number") {
+              methods[m] = rec.methods[m];
+            }
+          }
+          if (Object.keys(methods).length > 0) out[host] = { grantedAt: rec.grantedAt, methods };
+        }
+      }
+      return out;
+    }
+    async function write(grants) {
+      await storage.set({ [GRANTS_KEY]: grants });
+    }
+    return {
+      /** 'persisted' | 'session' | false */
+      async check(host, method) {
+        if (sessionGrants.has(`${host}|${method}`)) return "session";
+        const grants = await readRaw();
+        return grants[host]?.methods?.[method] ? "persisted" : false;
+      },
+      /** Persist a grant covering exactly the methods approved. */
+      async grant(host, methods) {
+        const list = [...new Set(methods)].filter((m) => GRANTABLE_METHODS.has(m));
+        if (list.length === 0) return;
+        const grants = await readRaw();
+        const rec = grants[host] ?? { grantedAt: now2(), methods: {} };
+        for (const m of list) rec.methods[m] = now2();
+        grants[host] = rec;
+        await write(grants);
+      },
+      /** A this-time-only grant — memory, dies with the worker. */
+      grantSession(host, methods) {
+        for (const m of methods) {
+          if (GRANTABLE_METHODS.has(m)) sessionGrants.add(`${host}|${m}`);
+        }
+      },
+      /** Revocation deletes the record immediately (a null host = all). */
+      async revoke(host = null) {
+        if (host === null) {
+          sessionGrants.clear();
+          await write({});
+          return;
+        }
+        const grants = await readRaw();
+        delete grants[host];
+        await write(grants);
+        for (const key of [...sessionGrants]) {
+          if (key.startsWith(`${host}|`)) sessionGrants.delete(key);
+        }
+      },
+      /** The Sites screen: every persisted grant with host, methods, date. */
+      async list() {
+        const grants = await readRaw();
+        return Object.entries(grants).map(([host, rec]) => ({
+          host,
+          grantedAt: rec.grantedAt,
+          methods: Object.keys(rec.methods).sort()
+        }));
+      }
+    };
+  }
+
+  // src/worker/prompt.js
+  var EVENT_KIND_WORDS = {
+    0: "metadata update",
+    1: "short text note",
+    3: "contact list",
+    4: "encrypted direct message",
+    5: "event deletion",
+    6: "repost",
+    7: "reaction",
+    40: "channel creation",
+    41: "channel metadata",
+    42: "channel message",
+    22242: "authentication of a client",
+    10002: "relay list metadata",
+    30023: "long-form article",
+    30078: "application-specific data"
+  };
+  function truncate(s, n = 80) {
+    const oneLine = String(s).replace(/\s+/g, " ").trim();
+    return oneLine.length > n ? `${oneLine.slice(0, n - 1)}\u2026` : oneLine;
+  }
+  function buildPreview(method, args = []) {
+    switch (method) {
+      case "get_public_key":
+        return "reads the public key (npub) of the selected identity";
+      case "list_keys":
+        return "lists the identities stored on the device";
+      case "sign_event": {
+        const e = args[0] ?? {};
+        const kind = Number.isInteger(e.kind) ? e.kind : Number(e.kind);
+        const what = EVENT_KIND_WORDS[kind] ?? `kind ${e.kind}`;
+        const content = e.content ? ` \u2014 "${truncate(e.content)}"` : "";
+        return `signs a ${what}${content}`;
+      }
+      case "nip44_encrypt": {
+        const peer = typeof args[0] === "string" ? `${args[0].slice(0, 12)}\u2026` : "?";
+        const len = typeof args[1] === "string" ? args[1].length / 2 : 0;
+        return `encrypts ${Math.round(len)} byte(s) for peer ${peer}`;
+      }
+      case "nip44_decrypt": {
+        const peer = typeof args[0] === "string" ? `${args[0].slice(0, 12)}\u2026` : "?";
+        const len = typeof args[1] === "string" ? Math.floor(args[1].length * 3 / 4) : 0;
+        return `decrypts a ${Math.round(len)} byte(s) payload from peer ${peer} \u2014 the text stays on your device`;
+      }
+      default:
+        return "";
+    }
+  }
+  function createPromptFlow({ windows, now: now2 = () => Date.now() } = {}) {
+    const outstanding = /* @__PURE__ */ new Map();
+    if (windows?.onRemoved?.addListener) {
+      windows.onRemoved.addListener((windowId) => {
+        for (const [id, rec] of [...outstanding.entries()]) {
+          if (rec.windowId !== windowId) continue;
+          outstanding.delete(id);
+          rec.reject({ ...USER_DENIED, message: "the approval window was closed \u2014 request denied" });
+        }
+      });
+    }
+    return {
+      /** Open the prompt; resolves `{approved, remember}` or rejects typed. */
+      async ask({ requestId, method, host, preview, focus = true }) {
+        const url = `prompt.html?request=${encodeURIComponent(requestId)}&method=${encodeURIComponent(method)}&host=${encodeURIComponent(host)}&preview=${encodeURIComponent(preview)}`;
+        const win = await windows.create({
+          url,
+          type: "popup",
+          width: 420,
+          height: 320,
+          focused: focus
+        });
+        return new Promise((resolve, reject) => {
+          outstanding.set(requestId, { resolve, reject, windowId: win.id });
+        });
+      },
+      /** The prompt page's decision (via the dispatch, trusted sender). */
+      async decide({ requestId, approve, remember = false }) {
+        const rec = outstanding.get(requestId);
+        if (!rec) return { delivered: false };
+        outstanding.delete(requestId);
+        if (approve) rec.resolve({ approved: true, remember, at: now2() });
+        else rec.reject({ ...USER_DENIED });
+        return { delivered: true };
+      },
+      get outstandingCount() {
+        return outstanding.size;
+      }
+    };
+  }
+
+  // src/worker/consent.js
+  function hostFromSender(sender) {
+    const raw = sender?.url ?? sender?.origin ?? sender?.tab?.url;
+    if (typeof raw !== "string" || raw.length === 0) return "unknown";
+    try {
+      return new URL(raw).host || "unknown";
+    } catch {
+      return "unknown";
+    }
+  }
+  function createConsentGate({
+    permissions,
+    prompt,
+    pending = null,
+    portName = () => "nostr-consent",
+    hostOf = hostFromSender,
+    previewOf = null
+  } = {}) {
+    return async function consent({ method, args, sender, requestId, preview }) {
+      const host = hostOf(sender);
+      const granted = await permissions.check(host, method);
+      if (granted) return { host, method, grant: granted };
+      const shown = preview ?? previewOf?.(method, args) ?? "";
+      if (pending && requestId != null) {
+        await pending.begin({
+          id: requestId,
+          method,
+          preview: shown,
+          host,
+          portName: portName(sender)
+        });
+      }
+      let decision;
+      try {
+        decision = await prompt.ask({ requestId, method, host, preview: shown });
+      } catch (err) {
+        const denial = { error: { ...USER_DENIED, message: err?.message ?? USER_DENIED.message } };
+        if (pending && requestId != null) await pending.settle(requestId, denial);
+        const e = new Error(denial.error.message);
+        e.name = denial.error.name;
+        e.code = denial.error.code;
+        throw e;
+      }
+      if (decision.remember) {
+        await permissions.grant(host, [method]);
+      } else {
+        permissions.grantSession(host, [method]);
+      }
+      const outcome = { result: { consented: true } };
+      if (pending && requestId != null) await pending.settle(requestId, outcome);
+      return { host, method, grant: "new", remember: decision.remember };
+    };
+  }
+
   // src/worker/worker_boot.js
   async function widenSessionAccess(chrome_ = chrome) {
     try {
@@ -7512,27 +7762,24 @@
     await widenSessionAccess(chrome_);
     const pending = createPendingStore({ storage: chrome_.storage.session, windowExists });
     await pending.load();
-    const interrupted = await pending.adopt();
+    await pending.adopt();
+    const permissions = createPermissionStore({ storage: chrome_.storage.local });
+    const prompt = createPromptFlow({ windows: chrome_.windows });
+    const consent = createConsentGate({
+      permissions,
+      prompt,
+      pending,
+      portName: () => "nostr-consent",
+      hostOf: hostFromSender,
+      previewOf: buildPreview
+    });
     const handlers = createHandlers({
       device,
-      // Phase 4 (US-1699/1700) replaces these with the permission store and
-      // the prompt orchestration; until then a relayed request is refused
-      // loud rather than silently allowed.
-      consent: async ({ method, sender }) => {
-        throw Object.assign(new Error(`no persisted grant and no prompt yet \u2014 ${method} refused`), {
-          name: "PermissionRequiredError",
-          code: "permission-required"
-        });
-      },
-      listGrants: async () => [],
-      revoke: async () => {
-      },
-      onPromptDecision: async ([decision]) => {
-        const record = pending.get(decision.id);
-        if (!record) return { delivered: false };
-        await pending.settle(decision.id, decision.outcome);
-        return { delivered: true };
-      }
+      consent,
+      previewOf: buildPreview,
+      listGrants: () => permissions.list(),
+      revoke: (host) => permissions.revoke(host),
+      onPromptDecision: async ([decision]) => prompt.decide(decision ?? {})
     });
     const route = createDispatch(handlers);
     chrome_.runtime.onConnect.addListener((port) => {
@@ -7543,7 +7790,7 @@
       });
       port.onDisconnect.addListener(() => device.dropQueued(port.name));
     });
-    return { pending, device, route, interrupted };
+    return { pending, device, route, permissions, prompt };
   }
   if (typeof chrome !== "undefined" && chrome.runtime?.onConnect) {
     bootWorker().catch((err) => {

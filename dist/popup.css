@@ -1,2 +1,300 @@
-/* Popup styles land with the Phase 5 stories. */
-body { font: 14px/1.5 system-ui, sans-serif; min-width: 320px; min-height: 200px; }
+/* fapico2 Nostr — industrial utilitarian device panel.
+   The popup speaks the board's own LED language: charcoal body, amber for
+   the touch state (the one thing that glows), monospace-first data type.
+   MV3 CSP forbids remote fonts, so the terminal stack carries the identity
+   locally. 8px spacing rhythm, hairline separators, no rounded UI-kit
+   softness — panels are stamped, not pillowed. */
+
+:root {
+  --bg: #14171c;           /* panel chassis */
+  --bg-raise: #1e2229;     /* the icon's charcoal */
+  --bg-inset: #0d0f12;
+  --line: #2c313a;
+  --line-strong: #3d4450;
+  --ink: #d7dce3;
+  --ink-dim: #8a919c;
+  --amber: #ffb340;        /* the device LED — touch state only */
+  --amber-dim: #7a5518;
+  --ok: #7ddc7d;
+  --err: #ff8080;
+  --mono: ui-monospace, 'JetBrains Mono', 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --r: 8px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  width: 360px;
+  min-height: 320px;
+  max-height: 560px;
+  overflow-y: auto;
+  background: var(--bg);
+  color: var(--ink);
+  font: 13px/1.5 var(--sans);
+}
+
+/* --- chassis ------------------------------------------------------------- */
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-raise);
+}
+
+header h1 {
+  margin: 0;
+  font: 600 12px/1 var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+#device-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 11px/1 var(--mono);
+  color: var(--ink-dim);
+}
+#device-dot::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--line-strong);
+}
+#device-dot.connected::before { background: var(--ok); }
+#device-dot.absent::before { background: var(--err); }
+#device-dot.busy::before { background: var(--amber); }
+
+main { padding: 12px 14px 14px; }
+
+/* --- device card ---------------------------------------------------------- */
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--bg-raise);
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.card .row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.device-state { font: 12px/1.4 var(--mono); color: var(--ink-dim); }
+.device-state b { color: var(--ink); }
+
+/* --- buttons --------------------------------------------------------------- */
+
+button {
+  font: 600 12px/1 var(--mono);
+  color: var(--ink);
+  background: var(--bg-inset);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+button:hover { border-color: var(--amber-dim); }
+button:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+button.primary {
+  background: var(--amber);
+  border-color: var(--amber);
+  color: #14171c;
+}
+button.primary:hover { filter: brightness(1.08); }
+button.danger { border-color: var(--err); color: var(--err); background: transparent; }
+button.danger:disabled { border-color: var(--line-strong); color: var(--ink-dim); cursor: not-allowed; }
+button:disabled { opacity: 0.55; cursor: not-allowed; }
+button.ghost { background: transparent; border-color: var(--line); color: var(--ink-dim); }
+
+/* --- keys list -------------------------------------------------------------- */
+
+.occupancy {
+  font: 11px/1 var(--mono);
+  color: var(--ink-dim);
+  margin: 2px 0 8px;
+  letter-spacing: 0.06em;
+}
+.occupancy .cells { letter-spacing: 2px; color: var(--amber-dim); }
+.occupancy .cells .used { color: var(--amber); }
+
+.key-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 2px;
+  border-top: 1px solid var(--line);
+}
+.key-row:first-of-type { border-top: none; }
+.key-idx {
+  font: 700 11px/1 var(--mono);
+  color: var(--amber);
+  min-width: 20px;
+}
+.key-npub {
+  font: 11px/1.4 var(--mono);
+  color: var(--ink);
+  word-break: break-all;
+  flex: 1;
+}
+.key-npub .bech { color: var(--ink); }
+.key-npub .hex { color: var(--ink-dim); }
+.key-label {
+  font: 11px/1 var(--mono);
+  color: var(--ink-dim);
+  font-style: italic;
+}
+.key-actions { display: flex; gap: 4px; }
+.key-actions button { padding: 4px 7px; font-size: 10px; }
+
+.empty {
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r);
+  padding: 18px 14px;
+  text-align: center;
+  color: var(--ink-dim);
+  font: 12px/1.6 var(--mono);
+}
+
+/* --- forms ------------------------------------------------------------------- */
+
+label.field {
+  display: block;
+  margin: 10px 0;
+  font: 11px/1.4 var(--mono);
+  color: var(--ink-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+input[type='text'], input[type='password'], textarea {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  background: var(--bg-inset);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  color: var(--ink);
+  font: 12px/1.4 var(--mono);
+  padding: 7px 8px;
+}
+input:focus-visible, textarea:focus-visible { outline: 2px solid var(--amber); outline-offset: 0; border-color: var(--amber); }
+
+input[type='checkbox'] { accent-color: var(--amber); }
+
+.check {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 12px 0;
+  font: 12px/1.5 var(--sans);
+  color: var(--ink);
+}
+
+.slot-picker { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+.slot-picker button {
+  min-width: 40px;
+  font: 700 12px/1 var(--mono);
+}
+.slot-picker button.free { border-color: var(--line-strong); }
+.slot-picker button.taken { border-color: var(--line); color: var(--ink-dim); cursor: not-allowed; text-decoration: line-through; }
+.slot-picker button.selected { background: var(--amber); border-color: var(--amber); color: #14171c; }
+
+/* --- touch bar: the one thing that glows ---------------------------------- */
+
+#touch-bar {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--amber);
+  border-radius: var(--r);
+  background: linear-gradient(90deg, rgba(255, 179, 64, 0.12), rgba(255, 179, 64, 0.02));
+  color: var(--amber);
+  font: 600 12px/1.4 var(--mono);
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+#touch-bar.on { display: flex; animation: pulse 1.6s ease-in-out infinite; }
+#touch-bar .led {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--amber);
+  flex: none;
+}
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 179, 64, 0.35); }
+  50% { box-shadow: 0 0 12px 2px rgba(255, 179, 64, 0.35); }
+}
+
+/* --- notices ------------------------------------------------------------------ */
+
+.notice {
+  border-radius: 4px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-inset);
+  color: var(--ink-dim);
+  font: 12px/1.5 var(--mono);
+  padding: 8px 10px;
+  margin: 8px 0;
+  word-break: break-word;
+}
+.notice.err { border-color: var(--err); color: var(--err); }
+.notice.ok { border-color: var(--ok); color: var(--ok); }
+
+/* --- screens & nav --------------------------------------------------------------- */
+
+.screen { display: none; }
+.screen.active { display: block; }
+
+h2.screen-title {
+  font: 600 11px/1 var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--ink-dim);
+  margin: 0 0 10px;
+}
+
+nav {
+  display: flex;
+  border-top: 1px solid var(--line);
+  background: var(--bg-raise);
+}
+nav button {
+  flex: 1;
+  border: none;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-dim);
+  padding: 10px 0;
+  font: 600 11px/1 var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+nav button:last-child { border-right: none; }
+nav button.active { color: var(--amber); }
+
+.reveal {
+  font: 12px/1.5 var(--mono);
+  background: var(--bg-inset);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  padding: 8px;
+  word-break: break-all;
+  color: var(--ink);
+}
+
+.actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+
+.muted { color: var(--ink-dim); font-size: 11px; line-height: 1.5; }
+code { font-family: var(--mono); color: var(--amber); font-size: 11px; }

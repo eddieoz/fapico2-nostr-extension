@@ -1,2 +1,106 @@
-/* Approval prompt styles land with US-1700. */
-body { font: 14px/1.5 system-ui, sans-serif; min-width: 360px; }
+/* The approval prompt — the same industrial utilitarian system as the
+   popup: charcoal chassis, amber reserved for the touch that follows.
+   This window's one job: context before the touch. */
+
+:root {
+  --bg: #14171c;
+  --bg-raise: #1e2229;
+  --bg-inset: #0d0f12;
+  --line: #2c313a;
+  --line-strong: #3d4450;
+  --ink: #d7dce3;
+  --ink-dim: #8a919c;
+  --amber: #ffb340;
+  --err: #ff8080;
+  --mono: ui-monospace, 'JetBrains Mono', 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 13px/1.5 var(--sans);
+  padding: 14px 16px 16px;
+  min-width: 380px;
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+header h1 {
+  margin: 0;
+  font: 600 11px/1 var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.request-host {
+  font: 600 14px/1.3 var(--mono);
+  color: var(--ink);
+  word-break: break-all;
+}
+.request-wants {
+  margin: 10px 0;
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--amber);
+  border-radius: 4px;
+  background: var(--bg-raise);
+  padding: 10px 12px;
+  font: 12px/1.6 var(--mono);
+  color: var(--ink);
+  word-break: break-word;
+}
+.request-wants .what { color: var(--amber); font-weight: 600; }
+
+.hint {
+  font: 11px/1.6 var(--mono);
+  color: var(--ink-dim);
+  margin: 10px 0;
+}
+
+label.check {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 12px 0;
+  font: 12px/1.5 var(--sans);
+  color: var(--ink);
+}
+input[type='checkbox'] { accent-color: var(--amber); }
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+button {
+  font: 600 12px/1 var(--mono);
+  color: var(--ink);
+  background: var(--bg-inset);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  padding: 9px 14px;
+  cursor: pointer;
+  flex: 1;
+}
+button:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+button.approve {
+  background: var(--amber);
+  border-color: var(--amber);
+  color: #14171c;
+}
+button.approve:hover { filter: brightness(1.08); }
+button.deny { color: var(--err); border-color: var(--err); background: transparent; }
+
+.footnote {
+  margin-top: 12px;
+  font: 10px/1.6 var(--mono);
+  color: var(--ink-dim);
+}

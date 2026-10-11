@@ -16,6 +16,7 @@ import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
 export function createHandlers({
   device,
   consent = async ({ method }) => ({ remember: false }),
+  previewOf = null,
   listGrants = async () => [],
   revoke = async () => {},
   onPromptDecision = null,
@@ -30,7 +31,15 @@ export function createHandlers({
   // The page-facing methods: consent first (per-host, per-method), then the
   // device. A trusted extension-page sender (the popup) skips the prompt.
   const pageMethod = (method, fn) => async (args, ctx) => {
-    if (!ctx.trusted) await consent({ method, args, sender: ctx.sender });
+    if (!ctx.trusted) {
+      await consent({
+        method,
+        args,
+        sender: ctx.sender,
+        requestId: ctx.requestId,
+        preview: previewOf?.(method, args),
+      });
+    }
     return fn(args, ctx);
   };
 
@@ -100,7 +109,7 @@ export function createHandlers({
       return { npub: bytesToHex(data.subarray(0, 32)) };
     },
 
-    delete_key: async ([slot]) => {
+    delete_key: async ([slot, expectedNpub]) => {
       if (!Number.isInteger(slot) || slot < 0 || slot > 7) {
         throw Object.assign(new Error('slot must be 0..7'), { name: 'SignerError', code: 'BAD_SLOT' });
       }
@@ -110,7 +119,16 @@ export function createHandlers({
           name: 'SignerError', code: 'DEVICE_REPLY_MALFORMED',
         });
       }
-      return { npub: bytesToHex(data.subarray(0, 32)) };
+      // US-1706: the echo must name the slot that was asked to die — a
+      // mismatch is a typed store-fault, never a green checkmark.
+      const echoed = bytesToHex(data.subarray(0, 32));
+      if (expectedNpub && echoed !== expectedNpub) {
+        throw Object.assign(
+          new Error(`the device echoed a different identity than the one requested — store fault, not success`),
+          { name: 'SignerError', code: 'STORE_FAULT' },
+        );
+      }
+      return { npub: echoed };
     },
 
     set_label: async ([slot, label]) => {

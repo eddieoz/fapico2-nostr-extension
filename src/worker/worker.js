@@ -6,6 +6,9 @@ import { createDispatch, attachPortListener } from './dispatch.js';
 import { createDeviceOwner, findGrantedDevice } from './device.js';
 import { createPendingStore } from './session.js';
 import { createHandlers } from './handlers.js';
+import { createPermissionStore } from './permissions.js';
+import { createPromptFlow, buildPreview } from './prompt.js';
+import { createConsentGate, hostFromSender } from './consent.js';
 import { widenSessionAccess } from './worker_boot.js';
 
 export async function bootWorker({
@@ -23,27 +26,26 @@ export async function bootWorker({
   await widenSessionAccess(chrome_);
   const pending = createPendingStore({ storage: chrome_.storage.session, windowExists });
   await pending.load();
-  const interrupted = await pending.adopt();
+  await pending.adopt();
+
+  const permissions = createPermissionStore({ storage: chrome_.storage.local });
+  const prompt = createPromptFlow({ windows: chrome_.windows });
+  const consent = createConsentGate({
+    permissions,
+    prompt,
+    pending,
+    portName: () => 'nostr-consent',
+    hostOf: hostFromSender,
+    previewOf: buildPreview,
+  });
 
   const handlers = createHandlers({
     device,
-    // Phase 4 (US-1699/1700) replaces these with the permission store and
-    // the prompt orchestration; until then a relayed request is refused
-    // loud rather than silently allowed.
-    consent: async ({ method, sender }) => {
-      throw Object.assign(new Error(`no persisted grant and no prompt yet — ${method} refused`), {
-        name: 'PermissionRequiredError',
-        code: 'permission-required',
-      });
-    },
-    listGrants: async () => [],
-    revoke: async () => {},
-    onPromptDecision: async ([decision]) => {
-      const record = pending.get(decision.id);
-      if (!record) return { delivered: false };
-      await pending.settle(decision.id, decision.outcome);
-      return { delivered: true };
-    },
+    consent,
+    previewOf: buildPreview,
+    listGrants: () => permissions.list(),
+    revoke: (host) => permissions.revoke(host),
+    onPromptDecision: async ([decision]) => prompt.decide(decision ?? {}),
   });
   const route = createDispatch(handlers);
 
@@ -60,7 +62,7 @@ export async function bootWorker({
     port.onDisconnect.addListener(() => device.dropQueued(port.name));
   });
 
-  return { pending, device, route, interrupted };
+  return { pending, device, route, permissions, prompt };
 }
 
 // Boot. The guard keeps the module importable in tests without a chrome API.
