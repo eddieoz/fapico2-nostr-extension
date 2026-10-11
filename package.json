@@ -6,7 +6,7 @@
   "private": true,
   "scripts": {
     "build": "node build.mjs",
-    "test": "npm run build && node --test tests/*.test.js",
+    "test": "npm run build && node --test --test-concurrency=8 tests/*.test.js",
     "test:smoke": "node tests/smoke/run.js",
     "check": "npm run build && git diff --exit-code -- dist/ && npm test"
   },
