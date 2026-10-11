@@ -67,7 +67,7 @@ test('US-1690 src/core is byte-identical to the OpenXrypt d431b00 originals exce
   //    failure is recorded in docs/ceremony-results.md). Found on
   //    hardware 2026-10-11; the ceremony is the gate that caught it.
   const allowList = {
-    'ctaphid.js': [216, 217, 242, 265, 312],
+    'ctaphid.js': [216, 217, 218, 242, 265, 312],
   };
 
   for (const name of await readdir(coreDir)) {
