@@ -406,7 +406,7 @@
     // Every waiter filters by channel; a fragmented message accumulates into
     // its waiter until the declared length is complete.
     _onReport(report) {
-      const data = report.data;
+      const data = report.data instanceof Uint8Array ? report.data : new Uint8Array(report.data.buffer, report.data.byteOffset, report.data.byteLength);
       if (!data || data.length !== REPORT_SIZE) return;
       const channel = data.slice(0, 4);
       const raw = data[4];

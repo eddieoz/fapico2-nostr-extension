@@ -264,7 +264,7 @@
     // Every waiter filters by channel; a fragmented message accumulates into
     // its waiter until the declared length is complete.
     _onReport(report) {
-      const data = report.data;
+      const data = report.data instanceof Uint8Array ? report.data : new Uint8Array(report.data.buffer, report.data.byteOffset, report.data.byteLength);
       if (!data || data.length !== REPORT_SIZE) return;
       const channel = data.slice(0, 4);
       const raw = data[4];
@@ -9590,7 +9590,8 @@
         const prev = dev.oninputreport;
         dev.oninputreport = (report) => {
           try {
-            const d = report?.data;
+            const raw = report?.data;
+            const d = raw instanceof Uint8Array ? raw : raw ? new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength) : null;
             if (d && d.length === 64 && d[4] === (6 | 128) && d.slice(0, 4).join() === "255,255,255,255") {
               initTap.reply = d.slice(7, 24);
             }

@@ -214,8 +214,8 @@ export function frameReports(channel, cmd, payload) {
 
 // A CTAPHID transaction over one open WebHID device. `dev` is anything with
 // the WebHID surface used here — `open()`, `close()`, `sendReport(reportId,
-// data)` (the real WebHID signature), and an assignable `oninputreport` —
-// so the tests drive it with a scripted fake and the page passes a real one.
+// data)`, an assignable `oninputreport` — tests drive it with a fake, the
+// page passes a real HIDDevice.
 //
 // One transaction at a time (the device serves one per interface, §A.8.3
 // #9); every tab must re-INIT (a new CID) rather than reusing another tab's
@@ -346,7 +346,7 @@ export class CtapVendorTransport {
   // Every waiter filters by channel; a fragmented message accumulates into
   // its waiter until the declared length is complete.
   _onReport(report) {
-    const data = report.data;
+    const data = report.data instanceof Uint8Array ? report.data : new Uint8Array(report.data.buffer, report.data.byteOffset, report.data.byteLength); // Chrome hands a DataView; normalize
     if (!data || data.length !== REPORT_SIZE) return;
     const channel = data.slice(0, 4);
     const raw = data[4];

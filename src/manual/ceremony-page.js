@@ -59,7 +59,9 @@ $('start').addEventListener('click', async () => {
       const prev = dev.oninputreport;
       dev.oninputreport = (report) => {
         try {
-          const d = report?.data;
+          const raw = report?.data;
+          const d = raw instanceof Uint8Array ? raw
+            : raw ? new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength) : null;
           if (d && d.length === 64 && d[4] === (0x06 | 0x80) && d.slice(0, 4).join() === '255,255,255,255') {
             initTap.reply = d.slice(7, 24);
           }
