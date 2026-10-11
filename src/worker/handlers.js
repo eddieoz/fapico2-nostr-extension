@@ -169,6 +169,18 @@ export function createHandlers({
           { name: 'SignerError', code: 'STORE_FAULT' },
         );
       }
+      // US-1710 — the active-key reset: read the setting AFTER the device
+      // delete succeeded. That is a deliberate second request-time read
+      // (the read-once-per-request rule governs the page-facing identity
+      // ops only), and the fresh read declines to clobber a re-pick made
+      // during the touch window. Best-effort: the key is already destroyed
+      // and the touch is spent — a storage failure here must never
+      // falsify the delete's outcome.
+      try {
+        if ((await activeSlot()) === slot) await setActiveSlot(0);
+      } catch (err) {
+        console.error('active-key reset after delete failed', err);
+      }
       return { npub: echoed };
     },
 

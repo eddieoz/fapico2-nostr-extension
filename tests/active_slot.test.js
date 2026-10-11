@@ -144,3 +144,82 @@ test('US-1710 a "worker restart" (second table over the same storage) keeps the 
   const b = rig({ storage });
   assert.deepEqual(await call(b.handlers, 'get_active_slot', []), { slot: 4 });
 });
+
+// US-1710 — the delete-key reset: read AFTER the device delete succeeded;
+// reset to 0 only if the setting still names the deleted slot (a re-pick
+// during the touch window is not clobbered); best-effort — a storage
+// failure never falsifies the delete's outcome; a non-active delete
+// leaves the setting alone.
+
+/** A rig whose transport answers DELETE_KEY with the echoed npub (the
+ *  MockDevice double does not serve DELETE — deletes ride a scripted
+ *  transport, as in keys_destructive.test.js). */
+function deleteRig({ storage, npubEcho, beforeReply } = {}) {
+  const transport = {
+    vendor: async (cmd) => {
+      if (cmd === NOSTR_CMD.DELETE_KEY) {
+        if (beforeReply) await beforeReply();
+        return { sw: SW.OK, data: hexToBytes(npubEcho) };
+      }
+      return { sw: SW.OK, data: new Uint8Array(0) };
+    },
+  };
+  const device = createDeviceOwner({
+    getGrantedDevice: async () => ({}),
+    createTransport: () => transport,
+    openTransport: async () => {},
+  });
+  const store = createActiveSlotStore({ storage });
+  const handlers = createHandlers({ device, getActiveSlot: store.get, setActiveSlot: store.set });
+  return { handlers, storage };
+}
+
+test('US-1710 deleting the active slot resets the setting to 0', async () => {
+  const { handlers, storage } = deleteRig({ storage: slotStorage(1), npubEcho: NPUB1 });
+  await call(handlers, 'delete_key', [1, NPUB1]);
+  assert.equal(storage.data.get(ACTIVE_SLOT_KEY), 0);
+});
+
+test('US-1710 a re-pick during the touch window is not clobbered (fresh post-delete read)', async () => {
+  // The scripted transport parks the delete long enough for the user to
+  // re-pick slot 5 mid-request; the post-delete read must see 5 ≠ 1.
+  let deleteResolved;
+  const gate = new Promise((r) => (deleteResolved = r));
+  const storage = slotStorage(1);
+  const { handlers } = deleteRig({ storage, npubEcho: NPUB1, beforeReply: () => gate });
+  const done = call(handlers, 'delete_key', [1, NPUB1]);
+  await storage.set({ [ACTIVE_SLOT_KEY]: 5 }); // the user re-picks during the park
+  deleteResolved();
+  await done;
+  assert.equal(storage.data.get(ACTIVE_SLOT_KEY), 5, 'the re-pick stands');
+});
+
+test('US-1710 a failing reset write never falsifies the delete — it still resolves with the echo', async () => {
+  const device = createDeviceOwner({
+    getGrantedDevice: async () => ({}),
+    createTransport: () => ({
+      vendor: async (cmd) =>
+        cmd === NOSTR_CMD.DELETE_KEY
+          ? { sw: SW.OK, data: hexToBytes(NPUB1) }
+          : { sw: SW.OK, data: new Uint8Array(0) },
+    }),
+    openTransport: async () => {},
+  });
+  const handlers = createHandlers({
+    device,
+    getActiveSlot: async () => 1,
+    setActiveSlot: async () => {
+      throw new Error('quota');
+    },
+  });
+  const res = await call(handlers, 'delete_key', [1, NPUB1]);
+  assert.equal(res.npub, NPUB1, 'the delete still succeeded');
+});
+
+test('US-1710 deleting a non-active slot leaves the setting alone', async () => {
+  const third = { idx: 2, scalar: hexToBytes('33'.repeat(32)), label: 'third' };
+  const thirdPub = getPublicKey(third.scalar);
+  const { handlers, storage } = deleteRig({ storage: slotStorage(1), npubEcho: thirdPub });
+  await call(handlers, 'delete_key', [2, thirdPub]);
+  assert.equal(storage.data.get(ACTIVE_SLOT_KEY), 1);
+});
