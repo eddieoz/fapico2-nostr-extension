@@ -1,0 +1,192 @@
+(() => {
+  // src/shared/port-client.js
+  function createPortClient({ chrome_ = chrome, name = null } = {}) {
+    const portName = name ?? `nostr-page-${Math.floor(Math.random() * 1e9).toString(36)}`;
+    let seq = 0;
+    const pending = /* @__PURE__ */ new Map();
+    const port = chrome_.runtime.connect({ name: portName });
+    port.onMessage.addListener((msg) => {
+      if (!msg || typeof msg.id === "undefined") return;
+      const p = pending.get(msg.id);
+      if (!p) return;
+      pending.delete(msg.id);
+      if (msg.error) {
+        const err = new Error(msg.error.message);
+        err.name = msg.error.name;
+        err.code = msg.error.code;
+        if (msg.error.sw !== void 0) err.sw = msg.error.sw;
+        if (msg.error.device !== void 0) err.device = msg.error.device;
+        p.reject(err);
+      } else {
+        p.resolve(msg.result);
+      }
+    });
+    return {
+      portName,
+      call(method, ...args) {
+        return new Promise((resolve, reject) => {
+          const id = `c${seq++}`;
+          pending.set(id, { resolve, reject });
+          port.postMessage({ id, method, args });
+        });
+      }
+    };
+  }
+
+  // src/popup/pairing.js
+  var VENDOR_FILTER = { usagePage: 65280, usage: 1 };
+  function createPairing({ requestDevice, call, persist = () => {
+  }, now = () => Date.now() }) {
+    let lastProbeAt = 0;
+    let lastHealth = null;
+    return {
+      /** The Connect flow — call from the click handler only. */
+      async connect() {
+        const devices = await requestDevice({ filters: [VENDOR_FILTER] });
+        if (!devices || devices.length === 0) {
+          const err = new Error("no device selected");
+          err.name = "NotFoundError";
+          throw err;
+        }
+        const res = await call("pair_device");
+        lastHealth = res.state === "connected" ? { state: "connected" } : { state: "error", message: res.message };
+        persist(lastHealth);
+        return lastHealth;
+      },
+      /** Touch-free PING, rate-limited. Returns the device-card state. */
+      async health({ force = false } = {}) {
+        const t = now();
+        if (!force && t - lastProbeAt < 1e3) return lastHealth;
+        lastProbeAt = t;
+        try {
+          const res = await call("device_status");
+          lastHealth = res.state === "connected" ? { state: "connected" } : res.state === "busy" ? { state: "busy" } : res.code === "DEVICE_ABSENT" ? { state: "absent" } : { state: "error", message: res.message };
+        } catch (err) {
+          lastHealth = { state: "error", message: err.message };
+        }
+        persist(lastHealth);
+        return lastHealth;
+      },
+      get lastHealth() {
+        return lastHealth;
+      }
+    };
+  }
+
+  // src/popup/connect.js
+  function closeSelf() {
+    try {
+      chrome.tabs.getCurrent((tab) => {
+        if (tab) chrome.tabs.remove(tab.id);
+        else window.close();
+      });
+    } catch {
+      window.close();
+    }
+  }
+  function createConnectFlow({ requestDevice, call, persist = () => {
+  }, onClose = () => {
+  }, autoCloseMs = 1500, busyRetryMs = 1100 }) {
+    const pairing = createPairing({ requestDevice, call, persist });
+    let closed = false;
+    return {
+      /** The Connect click — runs the chooser in this gesture. */
+      async connect() {
+        try {
+          const health = await pairing.connect();
+          if (health.state === "connected" && !closed) {
+            closed = true;
+            setTimeout(onClose, autoCloseMs);
+          }
+          return health;
+        } catch (err) {
+          if (err?.name === "NotFoundError") return { state: "absent", cancelled: true };
+          throw err;
+        }
+      },
+      /**
+       * Touch-free probe for boot — a reopened window shows the live truth.
+       * A `busy` answer is the worker's 1 s probe window (the popup's own boot
+       * probe fired moments before this window opened), not a fault: one retry
+       * after the window lapses, exactly like the popup's boot path.
+       */
+      async health(opts) {
+        let h = await pairing.health(opts);
+        if (h?.state === "busy") {
+          await new Promise((r) => setTimeout(r, busyRetryMs));
+          h = await pairing.health({ ...opts, force: true });
+        }
+        return h;
+      },
+      get lastHealth() {
+        return pairing.lastHealth;
+      }
+    };
+  }
+  if (typeof document !== "undefined" && document.getElementById("connect")) {
+    let notice = function(msg, cls = "") {
+      const el = $("notice");
+      el.hidden = !msg;
+      el.textContent = msg ?? "";
+      el.className = `notice ${cls}`;
+    }, setDot = function(stateName) {
+      const dot = $("device-dot");
+      dot.className = stateName;
+      dot.textContent = stateName === "connected" ? "connected" : stateName === "absent" ? "not present" : stateName === "busy" ? "busy" : "checking";
+    }, render = function(h) {
+      if (!h) return;
+      if (h.state === "busy") {
+        setDot("busy");
+        $("connect-state").textContent = "busy \u2014 retrying in a second";
+        $("connect-state").className = "connect-state waiting";
+        return;
+      }
+      setDot(h.state === "connected" ? "connected" : "absent");
+      $("connect-state").textContent = h.state === "connected" ? "fapico2 board connected" : "no board granted yet";
+      $("connect-state").className = h.state === "connected" ? "connect-state connected" : "connect-state";
+    };
+    const api = createPortClient();
+    const $ = (id) => document.getElementById(id);
+    const flow = createConnectFlow({
+      requestDevice: (opts) => navigator.hid.requestDevice(opts),
+      call: api.call,
+      persist: (h) => {
+        try {
+          chrome.storage.session.set({ nostrDeviceCard: h });
+        } catch {
+        }
+      },
+      onClose: closeSelf
+    });
+    $("connect").addEventListener("click", async () => {
+      if (!navigator.hid) {
+        notice("WebHID is not available in this browser", "err");
+        return;
+      }
+      $("connect").disabled = true;
+      $("connect-state").textContent = "waiting for the picker\u2026";
+      $("connect-state").className = "connect-state waiting";
+      notice("");
+      try {
+        const health = await flow.connect();
+        render(health);
+        if (health.cancelled) {
+          notice("no device selected \u2014 click Connect to try again", "err");
+        } else if (health.state !== "connected") {
+          notice(health.message ?? "pairing failed", "err");
+        }
+      } catch (err) {
+        notice(err.message ?? "the chooser failed", "err");
+      } finally {
+        $("connect").disabled = false;
+      }
+    });
+    (async function boot() {
+      const h = await flow.health({ force: true });
+      render(h);
+      if (h.state === "connected") {
+        setTimeout(closeSelf, 1500);
+      }
+    })();
+  }
+})();

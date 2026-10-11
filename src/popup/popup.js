@@ -3,10 +3,11 @@
 // so nothing here prompts for site consent; the device touch is the consent
 // for every mutating op and the touch bar (the amber bar) surfaces it.
 //
-// The Connect button is the product's ONLY chooser: navigator.hid
-// .requestDevice runs here, in a user-gesture context, and the worker is
-// told to re-adopt the granted device (pair_device) — the worker itself
-// never opens a chooser.
+// The Connect button is the product's only chooser entry point: it hands
+// off to the connect.html tab, where navigator.hid.requestDevice runs under
+// a click gesture in a real tab (a chooser anchored to the action popup or
+// to a popup-type window is cancelled instantly). The worker itself never
+// opens a chooser.
 
 import { createPortClient } from '../shared/port-client.js';
 import { bech32 } from '@scure/base';
@@ -128,8 +129,12 @@ async function healthCheck({ force = false } = {}) {
   renderDeviceCard(h);
 }
 
-// The chooser: only this button, only in this gesture. (US-1702: never from
-// a page, never without a gesture — the stub assertion in the tests pins it.)
+// The chooser: only from an extension page, only under a click gesture.
+// (US-1702: never from a web page, never without a gesture — the stub
+// assertion in the tests pins it.) Chromium cancels a chooser anchored to
+// the action popup — the dialog steals focus, the popup closes on blur and
+// the request dies with it — so the actual chooser runs in a dedicated
+// extension window (connect.html). This button hands off to it.
 $('connect').addEventListener('click', async () => {
   if (!navigator.hid) {
     setDeviceDot('absent');
@@ -137,14 +142,24 @@ $('connect').addEventListener('click', async () => {
     return;
   }
   try {
-    const health = await pairing.connect();
-    renderDeviceCard(health ?? pairing.lastHealth);
-    await loadKeys();
-  } catch (err) {
-    if (err?.name === 'NotFoundError') {
-      notice('no device selected', 'err');
-    } else {
-      notice(err.message ?? 'the chooser failed', 'err');
+    // A tab, not a popup window: Chromium's chooser bubble closes itself
+    // (kLostFocus) when anchored to a popup-type window — only a real tab
+    // holds focus for it. Verified on Brave 151 and Chrome 154.
+    await chrome.tabs.create({ url: chrome.runtime.getURL('connect.html') });
+    window.close(); // the action popup has nothing left to show
+  } catch {
+    // No windows API in this context (tests, embedded runs): run the chooser
+    // here rather than dead-ending.
+    try {
+      const health = await pairing.connect();
+      renderDeviceCard(health ?? pairing.lastHealth);
+      await loadKeys();
+    } catch (err) {
+      if (err?.name === 'NotFoundError') {
+        notice('no device selected', 'err');
+      } else {
+        notice(err.message ?? 'the chooser failed', 'err');
+      }
     }
   }
 });

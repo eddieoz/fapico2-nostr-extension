@@ -63,6 +63,25 @@ Load the extension: `chrome://extensions` → Developer mode → **Load unpacked
 → select the **`dist/` folder** (not the repo root — the root is source;
 `src/manifest.json` is the build input and Chrome cannot load it).
 
+### Pairing (first connect)
+
+Click the toolbar icon → **Connect**. The popup opens a small **connect
+window** — click Connect there and pick the **fapico2** entry in the
+browser's device picker. Two Chromium quirks are designed around, not
+hidden:
+
+- **A chooser cannot anchor to the action popup** — the dialog steals
+  focus, the popup closes on blur, and the request is cancelled (symptom:
+  "no device selected" with no dialog). The chooser therefore runs in a
+  dedicated extension window, never in the action popup and never in the
+  service worker.
+- **The firmware's security-key (CTAPHID) interface is hidden from WebHID
+  choosers** by Chromium's FIDO-exclusion rule (`hid_chooser_controller.cc`
+  hides any device with a FIDO usage-page collection unless the origin is
+  privileged). The board exposes the vendor interface (usage page `0xFF00`)
+  as a separate entry — that is the one to pick, and the connect window says
+  so.
+
 ## Hardware contract
 
 The extension speaks the vendor protocol documented in the firmware tree:

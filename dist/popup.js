@@ -318,7 +318,7 @@
         lastProbeAt = t;
         try {
           const res = await call("device_status");
-          lastHealth = res.state === "connected" ? { state: "connected" } : res.code === "DEVICE_ABSENT" ? { state: "absent" } : { state: "error", message: res.message };
+          lastHealth = res.state === "connected" ? { state: "connected" } : res.state === "busy" ? { state: "busy" } : res.code === "DEVICE_ABSENT" ? { state: "absent" } : { state: "error", message: res.message };
         } catch (err) {
           lastHealth = { state: "error", message: err.message };
         }
@@ -1342,7 +1342,7 @@
     const shiftBy = BigInt(W);
     return { windows, windowSize, mask, maxNumber, shiftBy };
   }
-  function calcOffsets(n, window, wOpts) {
+  function calcOffsets(n, window2, wOpts) {
     const { windowSize, mask, maxNumber, shiftBy } = wOpts;
     let wbits = Number(n & mask);
     let nextN = n >> shiftBy;
@@ -1350,11 +1350,11 @@
       wbits -= maxNumber;
       nextN += _1n3;
     }
-    const offsetStart = window * windowSize;
+    const offsetStart = window2 * windowSize;
     const offset = offsetStart + Math.abs(wbits) - 1;
     const isZero = wbits === 0;
     const isNeg = wbits < 0;
-    const isNegF = window % 2 !== 0;
+    const isNegF = window2 % 2 !== 0;
     const offsetF = offsetStart;
     return { nextN, offset, isZero, isNeg, isNegF, offsetF };
   }
@@ -1407,7 +1407,7 @@
       const points = [];
       let p = point;
       let base = p;
-      for (let window = 0; window < windows; window++) {
+      for (let window2 = 0; window2 < windows; window2++) {
         base = p;
         points.push(base);
         for (let i2 = 1; i2 < windowSize; i2++) {
@@ -1430,8 +1430,8 @@
       let p = this.ZERO;
       let f = this.BASE;
       const wo = calcWOpts(W, this.bits);
-      for (let window = 0; window < wo.windows; window++) {
-        const { nextN, offset, isZero, isNeg, isNegF, offsetF } = calcOffsets(n, window, wo);
+      for (let window2 = 0; window2 < wo.windows; window2++) {
+        const { nextN, offset, isZero, isNeg, isNegF, offsetF } = calcOffsets(n, window2, wo);
         n = nextN;
         if (isZero) {
           f = f.add(negateCt(isNegF, precomputes[offsetF]));
@@ -1449,10 +1449,10 @@
      */
     wNAFUnsafe(W, precomputes, n, acc = this.ZERO) {
       const wo = calcWOpts(W, this.bits);
-      for (let window = 0; window < wo.windows; window++) {
+      for (let window2 = 0; window2 < wo.windows; window2++) {
         if (n === _0n3)
           break;
-        const { nextN, offset, isZero, isNeg } = calcOffsets(n, window, wo);
+        const { nextN, offset, isZero, isNeg } = calcOffsets(n, window2, wo);
         n = nextN;
         if (isZero) {
           continue;
@@ -7070,14 +7070,19 @@
       return;
     }
     try {
-      const health = await pairing.connect();
-      renderDeviceCard(health ?? pairing.lastHealth);
-      await loadKeys();
-    } catch (err) {
-      if (err?.name === "NotFoundError") {
-        notice("no device selected", "err");
-      } else {
-        notice(err.message ?? "the chooser failed", "err");
+      await chrome.tabs.create({ url: chrome.runtime.getURL("connect.html") });
+      window.close();
+    } catch {
+      try {
+        const health = await pairing.connect();
+        renderDeviceCard(health ?? pairing.lastHealth);
+        await loadKeys();
+      } catch (err) {
+        if (err?.name === "NotFoundError") {
+          notice("no device selected", "err");
+        } else {
+          notice(err.message ?? "the chooser failed", "err");
+        }
       }
     }
   });

@@ -31,6 +31,9 @@ const entries = [
   { entry: 'src/content/bridge.js', outfile: 'dist/bridge.js' },
   // Extension pages.
   { entry: 'src/popup/popup.js', outfile: 'dist/popup.js' },
+  // The connect window: the chooser can't anchor to the action popup
+  // (it closes on blur and cancels the request), so it runs here.
+  { entry: 'src/popup/connect.js', outfile: 'dist/connect.js' },
   { entry: 'src/prompt/prompt.js', outfile: 'dist/prompt.js' },
   // US-1709: the ceremony page's bundle (nostr-tools + the seam over the
   // raw device) — tests/manual/ceremony.html imports it from the repo root.
@@ -41,7 +44,7 @@ for (const { entry, outfile } of entries) {
   await build({ ...common, entryPoints: [join(root, entry)], outfile });
 }
 
-for (const file of ['src/manifest.json', 'src/popup/popup.html', 'src/popup/popup.css', 'src/prompt/prompt.html', 'src/prompt/prompt.css']) {
+for (const file of ['src/manifest.json', 'src/popup/popup.html', 'src/popup/popup.css', 'src/popup/connect.html', 'src/prompt/prompt.html', 'src/prompt/prompt.css']) {
   cpSync(join(root, file), join(dist, file.split('/').pop()));
 }
 cpSync(join(root, 'assets/icons'), join(dist, 'icons'), { recursive: true });

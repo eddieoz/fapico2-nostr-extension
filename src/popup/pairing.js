@@ -1,9 +1,11 @@
-// US-1702 — pairing: the popup's Connect button is the product's ONLY
-// chooser. `requestDevice` runs in this user-gesture context; the worker is
-// then told to re-adopt the granted device (pair_device) — the worker never
-// opens a chooser. The health check is touch-free and rate-limited (>=1 s
-// between probes), and the last answer is persisted to storage.session so
-// the popup reopens to truth.
+// US-1702 — pairing: the popup's Connect flow is the product's ONLY chooser.
+// requestDevice runs in an extension page (popup.js hands off to the
+// connect.html window: a chooser anchored to the action popup is cancelled
+// the moment the popup blurs); the worker is then told to re-adopt the
+// granted device (pair_device) — the worker never opens a chooser. The
+// health check is touch-free and rate-limited (>=1 s between probes), and
+// the last answer is persisted to storage.session so the popup reopens to
+// truth.
 
 export const VENDOR_FILTER = { usagePage: 0xff00, usage: 0x01 };
 
@@ -41,9 +43,11 @@ export function createPairing({ requestDevice, call, persist = () => {}, now = (
         lastHealth =
           res.state === 'connected'
             ? { state: 'connected' }
-            : res.code === 'DEVICE_ABSENT'
-              ? { state: 'absent' }
-              : { state: 'error', message: res.message };
+            : res.state === 'busy'
+              ? { state: 'busy' } // the probe window, not the device — amber, retried
+              : res.code === 'DEVICE_ABSENT'
+                ? { state: 'absent' }
+                : { state: 'error', message: res.message };
       } catch (err) {
         lastHealth = { state: 'error', message: err.message };
       }

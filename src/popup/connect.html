@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Connect fapico2</title>
+  <link rel="stylesheet" href="popup.css">
+  <style>
+    /* The connect window: the action popup cannot host the WebHID chooser
+       (it closes on blur and cancels the request), so the chooser lives in
+       this small extension window instead. */
+    body { width: 360px; min-height: 0; max-height: none; }
+    .connect-lede { font: 12px/1.6 var(--mono); color: var(--ink-dim); margin: 2px 0 12px; }
+    .connect-lede b { color: var(--ink); }
+    .connect-state { font: 12px/1.4 var(--mono); color: var(--ink-dim); min-height: 18px; }
+    .connect-state.connected { color: var(--ok); }
+    .connect-state.waiting { color: var(--amber); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>connect fapico2</h1>
+    <span id="device-dot">checking…</span>
+  </header>
+  <main>
+    <div id="touch-bar" role="status"><span class="led"></span><span id="touch-text">touch your device</span></div>
+    <div id="notice" class="notice" hidden></div>
+
+    <p class="connect-lede">Click <b>Connect</b> and the browser will show the device picker. Select the entry named <b>fapico2</b>. The firmware's security-key interface is hidden by the browser — the <b>fapico2</b> entry is the right one.</p>
+
+    <section class="card">
+      <div class="row">
+        <span class="connect-state" id="connect-state">idle</span>
+        <button id="connect" class="primary">Connect</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="connect.js"></script>
+</body>
+</html>
