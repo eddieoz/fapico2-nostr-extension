@@ -60,7 +60,7 @@ test('US-1689 the manifest declares no world: "MAIN" content script (the US-1696
   }
   // And the source manifest — the one a future edit is most likely to
   // touch — carries the same invariant.
-  const source = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8'));
+  const source = JSON.parse(await readFile(join(root, 'src', 'manifest.json'), 'utf8'));
   for (const cs of source.content_scripts ?? []) {
     assert.notEqual(cs.world, 'MAIN');
   }

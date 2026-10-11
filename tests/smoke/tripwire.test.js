@@ -23,7 +23,7 @@ test('US-1708 the OpenXrypt manifest shape trips the tripwire', async () => {
 });
 
 test('US-1708 this repo\'s manifest passes the tripwire clean', async () => {
-  const manifest = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8'));
+  const manifest = JSON.parse(await readFile(join(root, 'src', 'manifest.json'), 'utf8'));
   assert.equal(manifestTripwire(manifest), null);
 });
 

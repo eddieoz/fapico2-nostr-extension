@@ -112,7 +112,7 @@ async function main() {
 
   // The tripwire runs regardless of the live gate: the manifest shape that
   // kills NIP-07 (world: MAIN with a duplicate file) must be detected.
-  const tripwire = manifestTripwire(JSON.parse((await import('node:fs')).readFileSync(join(root, 'manifest.json'), 'utf8')));
+  const tripwire = manifestTripwire(JSON.parse((await import('node:fs')).readFileSync(join(root, 'src', 'manifest.json'), 'utf8')));
   if (tripwire) fail(`the manifest trips the OpenXrypt P0 shape: ${tripwire}`);
 
   const { server, url } = await startPageServer();

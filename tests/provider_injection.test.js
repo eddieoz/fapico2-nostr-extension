@@ -71,7 +71,7 @@ test('US-1696 the built manifest and the built bridge agree on the resource name
   const { join, dirname } = await import('node:path');
   const { fileURLToPath } = await import('node:url');
   const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-  const manifest = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8'));
+  const manifest = JSON.parse(await readFile(join(root, 'src', 'manifest.json'), 'utf8'));
   const war = manifest.web_accessible_resources.flatMap((r) => r.resources);
   assert.deepEqual(war, ['provider.js'], 'the provider chunk is the only web-accessible resource');
   assert.equal(manifest.content_scripts.length, 1, 'one content script entry');

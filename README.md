@@ -60,7 +60,8 @@ npm run check   # build + bundle-freshness diff + tests
 ```
 
 Load the extension: `chrome://extensions` → Developer mode → **Load unpacked**
-→ select `dist/`.
+→ select the **`dist/` folder** (not the repo root — the root is source;
+`src/manifest.json` is the build input and Chrome cannot load it).
 
 ## Hardware contract
 
