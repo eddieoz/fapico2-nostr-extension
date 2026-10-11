@@ -213,7 +213,7 @@ export function frameReports(channel, cmd, payload) {
 // --- the transport ---------------------------------------------------------
 
 // A CTAPHID transaction over one open WebHID device. `dev` is anything with
-// the WebHID surface used here — `open()`, `close()`, `sendReport({reportId,
+// the WebHID surface used here — `open()`, `close()`, `sendReport(data,
 // data})`, and an assignable `oninputreport` — so the tests drive it with a
 // scripted fake and the page passes a real `HIDDevice`.
 //
@@ -239,7 +239,7 @@ export class CtapVendorTransport {
     await this.dev.open();
     const waiter = this._expect(BROADCAST_CID, CMD_INIT);
     for (const r of frameReports(BROADCAST_CID, CMD_INIT, nonce)) {
-      await this.dev.sendReport({ reportId: 0, data: r });
+      await this.dev.sendReport(r, 0); // the real WebHID signature: sendReport(data, reportId)
     }
     const reply = await waiter;
     if (reply.payload.length < 17) throw new CtapError(CtapErr.BAD_INIT, "short INIT reply");
@@ -262,7 +262,7 @@ export class CtapVendorTransport {
     if (!this.cid) throw new CtapError(CtapErr.DEVICE_ABSENT, "transport not opened");
     const payload = encodeRequest(idx, arg);
     for (const r of frameReports(this.cid, cmd, payload)) {
-      await this.dev.sendReport({ reportId: 0, data: r });
+      await this.dev.sendReport(r, 0); // the real WebHID signature: sendReport(data, reportId)
     }
     const deadline = Date.now() + timeoutMs;
     let sawUpNeeded = false;
@@ -309,7 +309,7 @@ export class CtapVendorTransport {
   // device's CANCEL is silent when nothing is parked, so absence is normal.
   async _cancelAndCollect(replyCmd, timeoutMs = 20_000) {
     const cancel = frameReports(this.cid, CMD_CANCEL, new Uint8Array(0));
-    for (const r of cancel) await this.dev.sendReport({ reportId: 0, data: r });
+    for (const r of cancel) await this.dev.sendReport(r, 0); // the real WebHID signature: sendReport(data, reportId)
     try {
       const frame = await this._expectFrame(this.cid, timeoutMs);
       if (frame.cmd === replyCmd) {

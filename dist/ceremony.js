@@ -168,7 +168,7 @@
       await this.dev.open();
       const waiter = this._expect(BROADCAST_CID, CMD_INIT);
       for (const r of frameReports(BROADCAST_CID, CMD_INIT, nonce)) {
-        await this.dev.sendReport({ reportId: 0, data: r });
+        await this.dev.sendReport(r, 0);
       }
       const reply = await waiter;
       if (reply.payload.length < 17) throw new CtapError(CtapErr.BAD_INIT, "short INIT reply");
@@ -190,7 +190,7 @@
       if (!this.cid) throw new CtapError(CtapErr.DEVICE_ABSENT, "transport not opened");
       const payload = encodeRequest(idx, arg);
       for (const r of frameReports(this.cid, cmd, payload)) {
-        await this.dev.sendReport({ reportId: 0, data: r });
+        await this.dev.sendReport(r, 0);
       }
       const deadline = Date.now() + timeoutMs;
       let sawUpNeeded = false;
@@ -231,7 +231,7 @@
     // device's CANCEL is silent when nothing is parked, so absence is normal.
     async _cancelAndCollect(replyCmd, timeoutMs = 2e4) {
       const cancel = frameReports(this.cid, CMD_CANCEL, new Uint8Array(0));
-      for (const r of cancel) await this.dev.sendReport({ reportId: 0, data: r });
+      for (const r of cancel) await this.dev.sendReport(r, 0);
       try {
         const frame = await this._expectFrame(this.cid, timeoutMs);
         if (frame.cmd === replyCmd) {
@@ -9572,7 +9572,7 @@
         const reply = data.slice(7, 7 + FIRST_PAYLOAD);
         resolve({ nonce, reply: reply.slice(0, 17) });
       };
-      dev.sendReport({ reportId: 0, data: frame }).catch((err) => {
+      dev.sendReport(frame, 0).catch((err) => {
         clearTimeout(timer);
         dev.oninputreport = previous;
         reject(err);

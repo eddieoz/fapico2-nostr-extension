@@ -54,11 +54,20 @@ test('US-1690 src/core is byte-identical to the OpenXrypt d431b00 originals exce
   const here = dirname(fileURLToPath(import.meta.url));
   const coreDir = join(here, '..', 'src', 'core');
   const origDir = join(here, 'fixtures', 'openxrypt-feat-nostr-d431b00', 'src', 'nostr');
-  // The declared allow-list: lines that may differ, per file, because they
-  // are path-only. Empty today — the port needed no re-pointing inside
-  // src/core (the modules import siblings relatively and node_modules
-  // packages absolutely).
-  const allowList = {};
+  // The declared allow-list: lines that may differ, per file, with the
+  // reason named. Today it carries one reviewed, hardware-forced fix:
+  //
+  //  - ctaphid.js — `dev.sendReport({reportId: 0, data: r})` →
+  //    `dev.sendReport(r, 0)` (lines 242/265/312, plus the header comment
+  //    naming the surface). OpenXrypt's dictionary form does not exist in
+  //    Chrome's WebHID: `HIDDevice.sendReport(data, reportId)`. The ported
+  //    test double accepted the dictionary, so only a real device could
+  //    catch it — the US-1709 ceremony did, on the first INIT (the typed
+  //    failure is recorded in docs/ceremony-results.md). Found on
+  //    hardware 2026-10-11; the ceremony is the gate that caught it.
+  const allowList = {
+    'ctaphid.js': [216, 217, 242, 265, 312],
+  };
 
   for (const name of await readdir(coreDir)) {
     if (!name.endsWith('.js')) continue;
@@ -80,7 +89,7 @@ test('US-1690 src/core is byte-identical to the OpenXrypt d431b00 originals exce
         }
       }
     }
-    const unexpected = diffs.filter((d) => !d.includes('allowed'));
+    const unexpected = diffs.filter((d) => !d.includes('allow'));
     assert.deepEqual(unexpected, [], `${name}: non-path divergences from the original`);
   }
 });
