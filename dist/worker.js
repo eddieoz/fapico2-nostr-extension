@@ -7273,7 +7273,7 @@
       if (event.pubkey != null && event.pubkey !== pubkey) {
         throw new SignerError(
           "KEY_MISMATCH",
-          `event names pubkey ${event.pubkey} but the device identity is ${pubkey}`
+          `this site still expects a different key \u2014 the active key was changed in the fapico2 popup; switch back there or re-connect the site (site expects ${event.pubkey.slice(0, 16)}\u2026, active identity ${pubkey.slice(0, 16)}\u2026)`
         );
       }
       const e = {
@@ -7518,6 +7518,11 @@
             new Error(`the device echoed a different identity than the one requested \u2014 store fault, not success`),
             { name: "SignerError", code: "STORE_FAULT" }
           );
+        }
+        try {
+          if (await activeSlot() === slot) await setActiveSlot(0);
+        } catch (err) {
+          console.error("active-key reset after delete failed", err);
         }
         return { npub: echoed };
       },

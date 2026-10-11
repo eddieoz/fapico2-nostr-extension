@@ -31,6 +31,21 @@ export function renderKeysModel(keys, { slots = SLOTS } = {}) {
   return { rows, free, occupied: rows.length, slots };
 }
 
+/** US-1710 — the active-key model: the ONE render source for the popup's
+ *  strip and radios. The stored slot is validated against device truth
+ *  (the keys list); an unoccupied stored slot renders as nothing selected
+ *  plus the actionable strip line — never trusted blindly. */
+export function activeKeyModel(keys, activeSlot, { slots = SLOTS } = {}) {
+  const { rows } = renderKeysModel(keys, { slots });
+  const active = rows.find((r) => r.idx === activeSlot) ?? null;
+  return {
+    active,
+    strip: active
+      ? `active key: ${active.npubBech32.slice(0, 20)}…${active.npubBech32.slice(-4)} (slot ${active.idx})`
+      : 'no active key — pick one in Keys',
+  };
+}
+
 /**
  * US-1705 — decode/validate the pasted secret LOCALLY, before the touch:
  * `nsec1…` (bech32) or a 64-hex-char scalar. Returns {scalarHex, npubHex,

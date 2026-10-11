@@ -184,14 +184,9 @@ export class FapicoSigner {
   async signEvent(event) {
     const pubkey = await this.getPublicKey();
     if (event.pubkey != null && event.pubkey !== pubkey) {
-      // US-1710 — the sentence leads with the remedy (the code stays
-      // KEY_MISMATCH): a site caching the pre-flip npub is the normal
-      // consequence of changing the active key, and two raw hex blobs name
-      // no next step.
       throw new SignerError(
         'KEY_MISMATCH',
-        `this site still expects a different key — the active key was changed in the fapico2 popup; ` +
-          `switch back there or re-connect the site (site expects ${event.pubkey.slice(0, 16)}…, active identity ${pubkey.slice(0, 16)}…)`,
+        `this site still expects a different key — the active key was changed in the fapico2 popup; switch back there or re-connect the site (site expects ${event.pubkey.slice(0, 16)}…, active identity ${pubkey.slice(0, 16)}…)`,
       );
     }
     const e = {

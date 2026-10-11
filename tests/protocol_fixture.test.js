@@ -66,11 +66,22 @@ test('US-1690 src/core is byte-identical to the OpenXrypt d431b00 originals exce
   //    catch it — the US-1709 ceremony did, on the first INIT (the typed
   //    failure is recorded in docs/ceremony-results.md). Found on
   //    hardware 2026-10-11; the ceremony is the gate that caught it.
+  //
+  //  - seams.js — the device signEvent's KEY_MISMATCH message (line 189)
+  //    leads with the remedy instead of two raw hex blobs: with the
+  //    US-1710 active key, a site caching the pre-flip npub is the normal
+  //    consequence of changing the active key, and the sentence must name
+  //    the next step (switch back in the popup, or re-connect the site).
+  //    The code stays KEY_MISMATCH; reviewed in the US-1710 design
+  //    (docs/superpowers/specs/2026-10-11-active-key-design.md).
   const allowList = {
     'ctaphid.js': [
       216, 217, 218, // header names the real sendReport signature
       242, 265, 312, // sendReport(reportId, data) — the reportId is the first argument
       349, // _onReport normalizes Chrome's DataView report data before framing
+    ],
+    'seams.js': [
+      189, // the KEY_MISMATCH sentence leads with the remedy (US-1710)
     ],
   };
 

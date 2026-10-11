@@ -298,3 +298,24 @@ nav button.active { color: var(--amber); }
 
 .muted { color: var(--ink-dim); font-size: 11px; line-height: 1.5; }
 code { font-family: var(--mono); color: var(--amber); font-size: 11px; }
+
+/* US-1710 — the active-key strip (all screens) and the row radio. */
+.active-strip {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--bg-inset);
+  font: 11px/1.4 var(--mono);
+  color: var(--ink-dim);
+}
+.active-strip.none { color: var(--amber); border-color: var(--amber); }
+.key-pick {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+.key-pick input[type='radio'] { accent-color: var(--amber); flex: none; align-self: center; }

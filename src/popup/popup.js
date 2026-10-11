@@ -14,6 +14,7 @@ import { bech32 } from '@scure/base';
 import { createPairing } from './pairing.js';
 import {
   renderKeysModel,
+  activeKeyModel,
   decodeImportSecret,
   validateLabel,
   npubBech32,
@@ -28,6 +29,7 @@ const state = {
   keys: [],
   deviceState: 'checking',
   lastHealthAt: 0,
+  activeSlot: 0, // US-1710 — the stored global active slot (0 = default)
   genSlot: null,
   import: null, // {scalarHex, npubHex}
   deleteTarget: null, // {idx, npub, label}
@@ -166,6 +168,28 @@ $('connect').addEventListener('click', async () => {
 
 // --- keys home (US-1703) -------------------------------------------------------
 
+/** US-1710 — the ONE render path for the strip and the radios: both feed
+ *  from activeKeyModel (device truth + stored slot), so they cannot
+ *  disagree. */
+function renderActive() {
+  const m = activeKeyModel(state.keys, state.activeSlot);
+  const strip = $('active-strip');
+  strip.textContent = m.strip;
+  strip.classList.toggle('none', !m.active);
+  for (const input of document.querySelectorAll('input[name="active-key"]')) {
+    input.checked = m.active != null && Number(input.dataset.slot) === m.active.idx;
+  }
+}
+
+async function loadActive() {
+  try {
+    state.activeSlot = (await api.call('get_active_slot')).slot;
+  } catch {
+    state.activeSlot = 0; // the fresh read failed: fall back to the default
+  }
+  renderActive();
+}
+
 async function loadKeys() {
   const list = $('keys-list');
   try {
@@ -180,18 +204,22 @@ async function loadKeys() {
     $('occupancy').innerHTML = `${model.occupied}/${SLOTS} slots <span class="cells">${cells}</span>`;
     if (model.rows.length === 0) {
       list.innerHTML = `<div class="empty">no keys on the device —<br>generate or import one</div>`;
+      renderActive();
       return;
     }
     list.innerHTML = model.rows
       .map(
         (r) => `
       <div class="key-row">
-        <span class="key-idx">${r.idx}</span>
-        <span class="key-npub">
-          <span class="bech">${r.npubBech32.slice(0, 20)}…${r.npubBech32.slice(-4)}</span><br>
-          <span class="hex">${r.npub.slice(0, 16)}…</span>
-          ${r.label ? `<br><span class="key-label">“${escapeHtml(r.label)}”</span>` : ''}
-        </span>
+        <label class="key-pick" for="active-${r.idx}" title="Make this the active key">
+          <input type="radio" name="active-key" id="active-${r.idx}" data-slot="${r.idx}">
+          <span class="key-idx">${r.idx}</span>
+          <span class="key-npub">
+            <span class="bech">${r.npubBech32.slice(0, 20)}…${r.npubBech32.slice(-4)}</span><br>
+            <span class="hex">${r.npub.slice(0, 16)}…</span>
+            ${r.label ? `<br><span class="key-label">“${escapeHtml(r.label)}”</span>` : ''}
+          </span>
+        </label>
         <span class="key-actions">
           <button data-act="label" data-idx="${r.idx}" title="Set label">label</button>
           <button data-act="export" data-idx="${r.idx}" title="Export key">export</button>
@@ -200,8 +228,10 @@ async function loadKeys() {
       </div>`,
       )
       .join('');
+    renderActive();
   } catch (err) {
     list.innerHTML = '';
+    renderActive();
     notice(err.message ?? 'could not list keys', 'err');
   }
 }
@@ -219,6 +249,26 @@ $('keys-list').addEventListener('click', (ev) => {
   if (btn.dataset.act === 'delete') openDelete(row);
   if (btn.dataset.act === 'label') openLabel(row);
   if (btn.dataset.act === 'export') openExport(row);
+});
+
+// US-1710 — the radio: instant (no device touch), confirmed before the UI
+// moves — on error the radio snaps back and the typed notice shows.
+$('keys-list').addEventListener('change', async (ev) => {
+  const input = ev.target.closest('input[name="active-key"]');
+  if (!input) return;
+  const idx = Number(input.dataset.slot);
+  try {
+    await api.call('set_active_slot', idx);
+    state.activeSlot = idx;
+    renderActive();
+    notice(
+      `active key is now slot ${idx} — sites that cached your other npub will need to reconnect`,
+      'ok',
+    );
+  } catch (err) {
+    renderActive(); // snap back to the stored truth
+    notice(err.message ?? 'could not set the active key', 'err');
+  }
 });
 
 // --- generate (US-1704) ----------------------------------------------------------
@@ -247,8 +297,13 @@ $('gen-confirm').addEventListener('click', async () => {
   if (state.genSlot == null) return;
   try {
     await deviceCall('generate_key', state.genSlot);
-    notice(`key generated in slot ${state.genSlot}`, 'ok');
     await loadKeys();
+    const activeSet = state.keys.some((k) => k.idx === state.activeSlot);
+    notice(
+      `key generated in slot ${state.genSlot}` +
+        (activeSet ? '' : ' — no active key is set yet; pick it on the Keys screen to sign with it'),
+      'ok',
+    );
     show('keys');
   } catch { /* the notice carries the named failure */ }
 });
@@ -294,8 +349,13 @@ $('import-confirm-btn').addEventListener('click', async () => {
     // both precede the device call.
     await deviceCall('import_key', state.importSlot, state.import.scalarHex);
     state.import = null; // the scalar hex is dropped the moment it is used
-    notice('key imported', 'ok');
     await loadKeys();
+    const activeSet = state.keys.some((k) => k.idx === state.activeSlot);
+    notice(
+      'key imported' +
+        (activeSet ? '' : ' — no active key is set yet; pick it on the Keys screen to sign with it'),
+      'ok',
+    );
     show('keys');
   } catch { /* notice carries the named failure */ }
 });
@@ -320,6 +380,9 @@ function openDelete(row) {
   state.deleteTarget = row;
   $('delete-what').innerHTML =
     `This destroys <code>${npubBech32(row.pubkey)}</code> (slot ${row.idx}${row.label ? `, “${escapeHtml(row.label)}”` : ''}). The key is gone from the device.`;
+  if (row.idx === state.activeSlot) {
+    $('delete-what').innerHTML += ` This is your active key — after deleting, the active key resets to slot 0.`;
+  }
   $('delete-understand').checked = false;
   $('delete-confirm').disabled = true;
   show('delete');
@@ -331,8 +394,10 @@ $('delete-confirm').addEventListener('click', async () => {
   const row = state.deleteTarget;
   if (!row) return;
   try {
+    const wasActive = row.idx === state.activeSlot;
     await deviceCall('delete_key', row.idx, row.pubkey);
-    notice(`slot ${row.idx} deleted`, 'ok');
+    if (wasActive) state.activeSlot = 0; // the worker reset it; stay in lockstep
+    notice(`slot ${row.idx} deleted` + (wasActive ? ' — the active key reset to slot 0' : ''), 'ok');
     await loadKeys();
     show('keys');
   } catch { /* a mismatched echo is a typed store-fault error — never a green checkmark */ }
@@ -466,4 +531,5 @@ $('nav-sites').addEventListener('click', () => { show('sites'); loadSites(); });
   } catch { /* no session storage — the fresh check decides */ }
   await healthCheck({ force: true });
   await loadKeys();
+  await loadActive();
 })();

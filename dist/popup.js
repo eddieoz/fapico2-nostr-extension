@@ -6925,6 +6925,14 @@
     }
     return { rows, free, occupied: rows.length, slots };
   }
+  function activeKeyModel(keys, activeSlot, { slots = SLOTS } = {}) {
+    const { rows } = renderKeysModel(keys, { slots });
+    const active = rows.find((r) => r.idx === activeSlot) ?? null;
+    return {
+      active,
+      strip: active ? `active key: ${active.npubBech32.slice(0, 20)}\u2026${active.npubBech32.slice(-4)} (slot ${active.idx})` : "no active key \u2014 pick one in Keys"
+    };
+  }
   function decodeImportSecret(input) {
     const raw = String(input ?? "").trim();
     if (raw.length === 0) {
@@ -6983,6 +6991,8 @@
     keys: [],
     deviceState: "checking",
     lastHealthAt: 0,
+    activeSlot: 0,
+    // US-1710 — the stored global active slot (0 = default)
     genSlot: null,
     import: null,
     // {scalarHex, npubHex}
@@ -7086,6 +7096,23 @@
       }
     }
   });
+  function renderActive() {
+    const m = activeKeyModel(state.keys, state.activeSlot);
+    const strip = $("active-strip");
+    strip.textContent = m.strip;
+    strip.classList.toggle("none", !m.active);
+    for (const input of document.querySelectorAll('input[name="active-key"]')) {
+      input.checked = m.active != null && Number(input.dataset.slot) === m.active.idx;
+    }
+  }
+  async function loadActive() {
+    try {
+      state.activeSlot = (await api.call("get_active_slot")).slot;
+    } catch {
+      state.activeSlot = 0;
+    }
+    renderActive();
+  }
   async function loadKeys() {
     const list = $("keys-list");
     try {
@@ -7099,17 +7126,21 @@
       $("occupancy").innerHTML = `${model.occupied}/${SLOTS} slots <span class="cells">${cells}</span>`;
       if (model.rows.length === 0) {
         list.innerHTML = `<div class="empty">no keys on the device \u2014<br>generate or import one</div>`;
+        renderActive();
         return;
       }
       list.innerHTML = model.rows.map(
         (r) => `
       <div class="key-row">
-        <span class="key-idx">${r.idx}</span>
-        <span class="key-npub">
-          <span class="bech">${r.npubBech32.slice(0, 20)}\u2026${r.npubBech32.slice(-4)}</span><br>
-          <span class="hex">${r.npub.slice(0, 16)}\u2026</span>
-          ${r.label ? `<br><span class="key-label">\u201C${escapeHtml(r.label)}\u201D</span>` : ""}
-        </span>
+        <label class="key-pick" for="active-${r.idx}" title="Make this the active key">
+          <input type="radio" name="active-key" id="active-${r.idx}" data-slot="${r.idx}">
+          <span class="key-idx">${r.idx}</span>
+          <span class="key-npub">
+            <span class="bech">${r.npubBech32.slice(0, 20)}\u2026${r.npubBech32.slice(-4)}</span><br>
+            <span class="hex">${r.npub.slice(0, 16)}\u2026</span>
+            ${r.label ? `<br><span class="key-label">\u201C${escapeHtml(r.label)}\u201D</span>` : ""}
+          </span>
+        </label>
         <span class="key-actions">
           <button data-act="label" data-idx="${r.idx}" title="Set label">label</button>
           <button data-act="export" data-idx="${r.idx}" title="Export key">export</button>
@@ -7117,8 +7148,10 @@
         </span>
       </div>`
       ).join("");
+      renderActive();
     } catch (err) {
       list.innerHTML = "";
+      renderActive();
       notice(err.message ?? "could not list keys", "err");
     }
   }
@@ -7134,6 +7167,23 @@
     if (btn.dataset.act === "delete") openDelete(row);
     if (btn.dataset.act === "label") openLabel(row);
     if (btn.dataset.act === "export") openExport(row);
+  });
+  $("keys-list").addEventListener("change", async (ev) => {
+    const input = ev.target.closest('input[name="active-key"]');
+    if (!input) return;
+    const idx = Number(input.dataset.slot);
+    try {
+      await api.call("set_active_slot", idx);
+      state.activeSlot = idx;
+      renderActive();
+      notice(
+        `active key is now slot ${idx} \u2014 sites that cached your other npub will need to reconnect`,
+        "ok"
+      );
+    } catch (err) {
+      renderActive();
+      notice(err.message ?? "could not set the active key", "err");
+    }
   });
   function openGenerate() {
     state.genSlot = null;
@@ -7157,8 +7207,12 @@
     if (state.genSlot == null) return;
     try {
       await deviceCall("generate_key", state.genSlot);
-      notice(`key generated in slot ${state.genSlot}`, "ok");
       await loadKeys();
+      const activeSet = state.keys.some((k) => k.idx === state.activeSlot);
+      notice(
+        `key generated in slot ${state.genSlot}` + (activeSet ? "" : " \u2014 no active key is set yet; pick it on the Keys screen to sign with it"),
+        "ok"
+      );
       show("keys");
     } catch {
     }
@@ -7197,8 +7251,12 @@
     try {
       await deviceCall("import_key", state.importSlot, state.import.scalarHex);
       state.import = null;
-      notice("key imported", "ok");
       await loadKeys();
+      const activeSet = state.keys.some((k) => k.idx === state.activeSlot);
+      notice(
+        "key imported" + (activeSet ? "" : " \u2014 no active key is set yet; pick it on the Keys screen to sign with it"),
+        "ok"
+      );
       show("keys");
     } catch {
     }
@@ -7220,6 +7278,9 @@
   function openDelete(row) {
     state.deleteTarget = row;
     $("delete-what").innerHTML = `This destroys <code>${npubBech32(row.pubkey)}</code> (slot ${row.idx}${row.label ? `, \u201C${escapeHtml(row.label)}\u201D` : ""}). The key is gone from the device.`;
+    if (row.idx === state.activeSlot) {
+      $("delete-what").innerHTML += ` This is your active key \u2014 after deleting, the active key resets to slot 0.`;
+    }
     $("delete-understand").checked = false;
     $("delete-confirm").disabled = true;
     show("delete");
@@ -7231,8 +7292,10 @@
     const row = state.deleteTarget;
     if (!row) return;
     try {
+      const wasActive = row.idx === state.activeSlot;
       await deviceCall("delete_key", row.idx, row.pubkey);
-      notice(`slot ${row.idx} deleted`, "ok");
+      if (wasActive) state.activeSlot = 0;
+      notice(`slot ${row.idx} deleted` + (wasActive ? " \u2014 the active key reset to slot 0" : ""), "ok");
       await loadKeys();
       show("keys");
     } catch {
@@ -7354,6 +7417,7 @@
     }
     await healthCheck({ force: true });
     await loadKeys();
+    await loadActive();
   })();
 })();
 /*! Bundled license information:
