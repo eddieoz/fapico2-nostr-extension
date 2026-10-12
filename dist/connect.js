@@ -4,22 +4,31 @@
     const portName = name ?? `nostr-page-${Math.floor(Math.random() * 1e9).toString(36)}`;
     let seq = 0;
     const pending = /* @__PURE__ */ new Map();
+    const eventFns = /* @__PURE__ */ new Set();
+    const disconnectFns = /* @__PURE__ */ new Set();
     const port = chrome_.runtime.connect({ name: portName });
     port.onMessage.addListener((msg) => {
-      if (!msg || typeof msg.id === "undefined") return;
-      const p = pending.get(msg.id);
-      if (!p) return;
-      pending.delete(msg.id);
-      if (msg.error) {
-        const err = new Error(msg.error.message);
-        err.name = msg.error.name;
-        err.code = msg.error.code;
-        if (msg.error.sw !== void 0) err.sw = msg.error.sw;
-        if (msg.error.device !== void 0) err.device = msg.error.device;
-        p.reject(err);
-      } else {
-        p.resolve(msg.result);
+      if (!msg) return;
+      if (typeof msg.id !== "undefined") {
+        const p = pending.get(msg.id);
+        if (!p) return;
+        pending.delete(msg.id);
+        if (msg.error) {
+          const err = new Error(msg.error.message);
+          err.name = msg.error.name;
+          err.code = msg.error.code;
+          if (msg.error.sw !== void 0) err.sw = msg.error.sw;
+          if (msg.error.device !== void 0) err.device = msg.error.device;
+          p.reject(err);
+        } else {
+          p.resolve(msg.result);
+        }
+        return;
       }
+      for (const fn of [...eventFns]) fn(msg);
+    });
+    port.onDisconnect.addListener(() => {
+      for (const fn of [...disconnectFns]) fn();
     });
     return {
       portName,
@@ -29,6 +38,21 @@
           pending.set(id, { resolve, reject });
           port.postMessage({ id, method, args });
         });
+      },
+      // US-1721 — subscribe to worker push frames ({event, ...}, no id). Returns
+      // an unsubscribe fn.
+      onEvent(fn) {
+        eventFns.add(fn);
+        return () => {
+          eventFns.delete(fn);
+        };
+      },
+      // US-1721 — subscribe to port disconnect. Returns an unsubscribe fn.
+      onDisconnect(fn) {
+        disconnectFns.add(fn);
+        return () => {
+          disconnectFns.delete(fn);
+        };
       }
     };
   }
