@@ -42,7 +42,9 @@ export function activeKeyModel(keys, activeSlot, { slots = SLOTS } = {}) {
     active,
     strip: active
       ? `active key: ${active.npubBech32.slice(0, 20)}…${active.npubBech32.slice(-4)} (slot ${active.idx})`
-      : 'no active key — pick one in Keys',
+      // US-1716 — at zero keys the strip says nothing is active without
+      // demanding an impossible pick (there is nothing to pick yet).
+      : 'no active key yet',
   };
 }
 

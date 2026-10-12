@@ -23,11 +23,13 @@ test('US-1710 the model picks the active row from device truth', () => {
 test('US-1710 an unoccupied stored slot renders as nothing selected plus the hint', () => {
   const m = activeKeyModel([K0, K3], 5);
   assert.equal(m.active, null);
-  assert.equal(m.strip, 'no active key — pick one in Keys');
+  assert.equal(m.strip, 'no active key yet');
 });
 
-test('US-1710 an empty device renders the hint too', () => {
+test('US-1716 an empty device renders the zero-key line without demanding a pick', () => {
   const m = activeKeyModel([], 0);
   assert.equal(m.active, null);
-  assert.equal(m.strip, 'no active key — pick one in Keys');
+  assert.equal(m.strip, 'no active key yet');
+  // it names the state, never asks the user to pick something that does not exist
+  assert.doesNotMatch(m.strip, /pick/i);
 });

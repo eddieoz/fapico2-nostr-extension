@@ -21,7 +21,7 @@ import {
   SW_WORDS,
   SLOTS,
 } from './keys.js';
-import { homeScreenFor } from './home-state.js';
+import { homeScreenFor, homeActions } from './home-state.js';
 
 const api = createPortClient();
 const $ = (id) => document.getElementById(id);
@@ -138,6 +138,18 @@ async function healthCheck({ force = false } = {}) {
 // device-error, busy/connected → the normal keys home.
 function renderHomeState() {
   show(homeScreenFor(state.lastHealth));
+  // US-1716 — when the board is absent, Generate and Import are disabled with a
+  // single stated reason; connected, they work. The connect-first screen owns
+  // these buttons, so this is the whole home-action state.
+  const actions = homeActions(state.deviceState === 'connected');
+  for (const id of ['go-generate-first', 'go-import-first']) {
+    const btn = $(id);
+    if (!btn) continue;
+    btn.disabled = actions.generate === 'disabled';
+    const word = id.includes('generate') ? 'Generate' : 'Import';
+    btn.title = actions.reason ? `${word} a key — ${actions.reason}` : '';
+    btn.setAttribute('aria-label', btn.title || word);
+  }
 }
 
 // The chooser: only from an extension page, only under a click gesture.
@@ -165,6 +177,8 @@ $('connect').addEventListener('click', async () => {
       const health = await pairing.connect();
       renderDeviceCard(health ?? pairing.lastHealth);
       await loadKeys();
+      // US-1716 — a mid-session connect re-renders the home to the normal state.
+      renderHomeState();
     } catch (err) {
       if (err?.name === 'NotFoundError') {
         notice('no device selected', 'err');

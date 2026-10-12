@@ -32,7 +32,20 @@
       <div id="keys-list"></div>
       <div class="actions">
         <button id="go-generate" class="primary">Generate</button>
-        <button id="go-import">Import</button>
+        <button id="go-import" class="ghost">Import</button>
+      </div>
+    </section>
+
+    <!-- CONNECT-FIRST (US-1716) — the honest first run: the board is absent, so
+         Generate and Import are disabled with a stated reason and the strip
+         shows nothing is active. Connecting completes the ritual, then the keys
+         home takes over. -->
+    <section class="screen" id="screen-connect-first" aria-label="Connect your board">
+      <h2 class="screen-title">Your first key</h2>
+      <p class="muted" id="connect-ritual">Plug in your fapico2, click <b>Connect</b>, and it asks for a touch whenever something needs signing.</p>
+      <div class="actions">
+        <button id="go-generate-first" class="primary">Generate</button>
+        <button id="go-import-first" class="ghost">Import</button>
       </div>
     </section>
 

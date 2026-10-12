@@ -18,3 +18,12 @@ export function homeScreenFor(lastHealth) {
       return 'keys';
   }
 }
+
+// US-1716 — the home actions' enabled state and their stated reason. When the
+// board is absent, Generate and Import are disabled with one shared clause
+// ("needs the board connected"); the empty-keys line says the same thing, so
+// there is no three-copy contradiction. `on` means the action is enabled.
+export function homeActions(deviceConnected) {
+  if (deviceConnected) return { generate: 'on', import: 'on', reason: null };
+  return { generate: 'disabled', import: 'disabled', reason: 'needs the board connected' };
+}

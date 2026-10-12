@@ -6930,7 +6930,7 @@
     const active = rows.find((r) => r.idx === activeSlot) ?? null;
     return {
       active,
-      strip: active ? `active key: ${active.npubBech32.slice(0, 20)}\u2026${active.npubBech32.slice(-4)} (slot ${active.idx})` : "no active key \u2014 pick one in Keys"
+      strip: active ? `active key: ${active.npubBech32.slice(0, 20)}\u2026${active.npubBech32.slice(-4)} (slot ${active.idx})` : "no active key yet"
     };
   }
   function decodeImportSecret(input) {
@@ -6996,6 +6996,10 @@
       default:
         return "keys";
     }
+  }
+  function homeActions(deviceConnected) {
+    if (deviceConnected) return { generate: "on", import: "on", reason: null };
+    return { generate: "disabled", import: "disabled", reason: "needs the board connected" };
   }
 
   // src/popup/popup.js
@@ -7089,6 +7093,15 @@
   }
   function renderHomeState() {
     show(homeScreenFor(state.lastHealth));
+    const actions = homeActions(state.deviceState === "connected");
+    for (const id of ["go-generate-first", "go-import-first"]) {
+      const btn = $(id);
+      if (!btn) continue;
+      btn.disabled = actions.generate === "disabled";
+      const word = id.includes("generate") ? "Generate" : "Import";
+      btn.title = actions.reason ? `${word} a key \u2014 ${actions.reason}` : "";
+      btn.setAttribute("aria-label", btn.title || word);
+    }
   }
   $("connect").addEventListener("click", async () => {
     if (!navigator.hid) {
@@ -7104,6 +7117,7 @@
         const health = await pairing.connect();
         renderDeviceCard(health ?? pairing.lastHealth);
         await loadKeys();
+        renderHomeState();
       } catch (err) {
         if (err?.name === "NotFoundError") {
           notice("no device selected", "err");
