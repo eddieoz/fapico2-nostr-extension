@@ -5,17 +5,7 @@
   <title>Connect fapico2</title>
   <link rel="stylesheet" href="tokens.css">
   <link rel="stylesheet" href="popup.css">
-  <style>
-    /* The connect window: the action popup cannot host the WebHID chooser
-       (it closes on blur and cancels the request), so the chooser lives in
-       this small extension window instead. */
-    body { width: 360px; min-height: 0; max-height: none; }
-    .connect-lede { font: 12px/1.6 var(--mono); color: var(--ink-dim); margin: 2px 0 12px; }
-    .connect-lede b { color: var(--ink); }
-    .connect-state { font: 12px/1.4 var(--mono); color: var(--ink-dim); min-height: 18px; }
-    .connect-state.connected { color: var(--ok); }
-    .connect-state.waiting { color: var(--amber); }
-  </style>
+  <link rel="stylesheet" href="connect.css">
 </head>
 <body>
   <header>

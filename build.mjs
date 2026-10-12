@@ -44,7 +44,7 @@ for (const { entry, outfile } of entries) {
   await build({ ...common, entryPoints: [join(root, entry)], outfile });
 }
 
-for (const file of ['src/manifest.json', 'src/popup/tokens.css', 'src/popup/popup.html', 'src/popup/popup.css', 'src/popup/connect.html', 'src/prompt/prompt.html', 'src/prompt/prompt.css']) {
+for (const file of ['src/manifest.json', 'src/popup/tokens.css', 'src/popup/popup.html', 'src/popup/popup.css', 'src/popup/connect.html', 'src/popup/connect.css', 'src/prompt/prompt.html', 'src/prompt/prompt.css']) {
   cpSync(join(root, file), join(dist, file.split('/').pop()));
 }
 cpSync(join(root, 'assets/icons'), join(dist, 'icons'), { recursive: true });
