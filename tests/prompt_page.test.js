@@ -17,6 +17,12 @@ const read = (p) => readFile(join(root, p), 'utf8');
 
 const stripComments = (css) => css.replace(/\/\*[\s\S]*?\*\//g, '');
 
+/** The first top-level `selector { ... }` block whose selector matches `re`. */
+function block(css, re) {
+  const m = css.match(new RegExp(`${re.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([\\s\\S]*?)\\}`));
+  return m ? m[1] : null;
+}
+
 test('US-1718 the preview is the headline and the raw method is the chip', () => {
   const r = requestRender('signs a short text note — "hi"', 'sign_event');
   assert.equal(r.headline, 'signs a short text note — "hi"');
@@ -60,4 +66,23 @@ test('US-1718 prompt.css styles the chip as a neutral tag, not an amber sentence
   const css = stripComments(await read('src/prompt/prompt.css'));
   assert.ok(/\.method-chip\s*\{/.test(css), 'the chip rule exists');
   assert.ok(!/\.what\s*\{/.test(css), 'the old .what sentence span is gone');
+});
+
+// US-1719 — the identity row must not shift the buttons: it reserves one line
+// always (min-height, and a hidden identity stays in flow) and reads advisory.
+test('US-1719 the identity row reserves one line even when omitted — never drops out of flow', async () => {
+  const css = stripComments(await read('src/prompt/prompt.css'));
+  const rule = block(css, '\.request-identity');
+  assert.ok(rule, 'the identity rule exists');
+  assert.ok(/min-height:/.test(rule), 'a min-height reserves the line in every state');
+  const hidden = css.match(/\.request-identity\[hidden\]\s*\{([^}]*)\}/);
+  assert.ok(hidden, 'the [hidden] override selector exists');
+  assert.ok(hidden && !/display:\s*none/.test(hidden[1]), 'a hidden identity stays in flow (space reserved)');
+});
+
+test('US-1719 the identity row is advisory — one step stronger than dim, never an alarm', async () => {
+  const css = stripComments(await read('src/prompt/prompt.css'));
+  const rule = block(css, '\.request-identity');
+  assert.ok(/color:\s*var\(--ink\)/.test(rule), 'stronger than the --ink-dim chassis text');
+  assert.ok(!/var\(--err\)|var\(--amber\)/.test(rule), 'no error/amber alarm styling');
 });

@@ -103,9 +103,17 @@ button.deny { color: var(--err); border-color: var(--err); background: transpare
   color: var(--ink-dim);
 }
 
-/* US-1710 — the identity line: which key will answer. */
+/* US-1710 — the identity line: which key will answer. US-1719 — it is the most
+   decision-relevant fact in the window, so it must not shift the buttons when
+   it arrives late (two 1.5s timeouts) or is omitted silently: one line is
+   reserved always (min-height, and a hidden identity stays in flow), and the
+   row reads one step stronger than the chassis dim while staying advisory. */
 .request-identity {
   font: 12px/1.4 var(--mono);
-  color: var(--ink-dim);
+  color: var(--ink);
   margin-top: 6px;
+  min-height: 1.4em;
 }
+/* an omitted identity keeps its line in flow — never display:none — so the
+   actions row never jumps when the line lands (US-1719) */
+.request-identity[hidden] { display: block; }
