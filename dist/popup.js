@@ -6984,6 +6984,20 @@
     Object.entries(SW_ERROR_MAP).map(([sw, v]) => [Number(sw), v.message])
   );
 
+  // src/popup/home-state.js
+  function homeScreenFor(lastHealth) {
+    switch (lastHealth?.state) {
+      case "absent":
+        return "connect-first";
+      case "error":
+        return "device-error";
+      case "busy":
+      case "connected":
+      default:
+        return "keys";
+    }
+  }
+
   // src/popup/popup.js
   var api = createPortClient();
   var $ = (id) => document.getElementById(id);
@@ -7072,6 +7086,9 @@
       h = await pairing.health({ force: true });
     }
     renderDeviceCard(h);
+  }
+  function renderHomeState() {
+    show(homeScreenFor(state.lastHealth));
   }
   $("connect").addEventListener("click", async () => {
     if (!navigator.hid) {
@@ -7416,6 +7433,7 @@
     } catch {
     }
     await healthCheck({ force: true });
+    renderHomeState();
     await loadKeys();
     await loadActive();
   })();

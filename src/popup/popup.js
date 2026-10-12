@@ -21,6 +21,7 @@ import {
   SW_WORDS,
   SLOTS,
 } from './keys.js';
+import { homeScreenFor } from './home-state.js';
 
 const api = createPortClient();
 const $ = (id) => document.getElementById(id);
@@ -129,6 +130,14 @@ async function healthCheck({ force = false } = {}) {
     h = await pairing.health({ force: true });
   }
   renderDeviceCard(h);
+}
+
+// US-1715 — the ONE home-screen decision, driven by the resolved device health.
+// The swap only touches the .screen elements below the always-present device
+// card, so no layout flash occurs above it. absent → connect-first, error →
+// device-error, busy/connected → the normal keys home.
+function renderHomeState() {
+  show(homeScreenFor(state.lastHealth));
 }
 
 // The chooser: only from an extension page, only under a click gesture.
@@ -530,6 +539,9 @@ $('nav-sites').addEventListener('click', () => { show('sites'); loadSites(); });
     }
   } catch { /* no session storage — the fresh check decides */ }
   await healthCheck({ force: true });
+  // US-1715 — now that lastHealth has resolved, pick the home below the device
+  // card (absent → connect-first, error → device-error, busy/connected → keys).
+  renderHomeState();
   await loadKeys();
   await loadActive();
 })();
