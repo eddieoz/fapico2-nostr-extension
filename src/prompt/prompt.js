@@ -10,7 +10,6 @@ import { identityLine } from './identity.js';
 import { requestRender } from './request-render.js';
 import { rememberCopy } from './remember-copy.js';
 
-const api = createPortClient({ name: 'nostr-prompt' });
 const $ = (id) => document.getElementById(id);
 
 const params = new URLSearchParams(location.search);
@@ -18,6 +17,11 @@ const requestId = params.get('request') ?? '';
 const method = params.get('method') ?? '';
 const host = params.get('host') ?? 'unknown site';
 const preview = params.get('preview') ?? '';
+
+// US-1723 — the prompt port is bound to this request (its name carries the
+// requestId), so the worker can push the prompt-settled outcome frame back to
+// exactly this window.
+const api = createPortClient({ name: `nostr-prompt-${requestId}` });
 
 $('host').textContent = host;
 $('remember-note').textContent = rememberCopy(host);

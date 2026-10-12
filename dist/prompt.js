@@ -401,13 +401,13 @@
   }
 
   // src/prompt/prompt.js
-  var api = createPortClient({ name: "nostr-prompt" });
   var $ = (id) => document.getElementById(id);
   var params = new URLSearchParams(location.search);
   var requestId = params.get("request") ?? "";
   var method = params.get("method") ?? "";
   var host = params.get("host") ?? "unknown site";
   var preview = params.get("preview") ?? "";
+  var api = createPortClient({ name: `nostr-prompt-${requestId}` });
   $("host").textContent = host;
   $("remember-note").textContent = rememberCopy(host);
   var render = requestRender(preview, method);

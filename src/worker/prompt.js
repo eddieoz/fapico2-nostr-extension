@@ -81,7 +81,18 @@ export function buildPreview(method, args = []) {
  * record must survive so a post-approval window close is a no-op (US-1722) and
  * US-1723's settle() can push the outcome and drop it.
  */
-export function createPromptFlow({ windows, now = () => Date.now() } = {}) {
+export function createPromptFlow({
+  windows,
+  now = () => Date.now(),
+  // US-1723 — push a frame to the bound port of a request's window. Keyed by
+  // requestId: the prompt port's name is `nostr-prompt-<requestId>`, so the
+  // worker binds requestId -> port on connect, resolved without a persisted
+  // field. Defaults to a no-op so callers that never settle are unaffected.
+  deliver = () => {},
+  // US-1723 — how long (ms) the outcome beat stays visible before the window
+  // closes.
+  beatMs = 800,
+} = {}) {
   const outstanding = new Map(); // requestId -> {resolve, reject, windowId}
   const awaitingSettle = new Map(); // requestId -> {windowId}
 
@@ -132,6 +143,33 @@ export function createPromptFlow({ windows, now = () => Date.now() } = {}) {
       } else {
         rec.reject({ ...USER_DENIED });
       }
+      return { delivered: true };
+    },
+
+    /**
+     * US-1723 — the device op settled (`outcome` is 'ok' or 'err'). Push the
+     * outcome to the request's window port and, after a visible beat, close it.
+     * A settle for an unknown requestId (a worker restart ate the map) is inert
+     * — no throw, no store write, no resurrection of state: awaitingSettle is
+     * in-memory only, so the session-record shape gains no field.
+     */
+    async settle(requestId, outcome, message) {
+      const rec = awaitingSettle.get(requestId);
+      if (!rec) return { delivered: false };
+      awaitingSettle.delete(requestId);
+      deliver(requestId, {
+        event: 'prompt-settled',
+        requestId,
+        outcome,
+        // US-1723 — the typed error sentence (e.g. the 6985 touch timeout)
+        // rides along for 'err'; 'ok' carries none.
+        ...(message != null ? { message } : {}),
+      });
+      // A visible beat so the user sees the outcome before the window closes.
+      // windows.remove on an already-closed window is swallowed (US-1722).
+      setTimeout(() => {
+        windows.remove(rec.windowId).catch(() => {});
+      }, beatMs);
       return { delivered: true };
     },
 

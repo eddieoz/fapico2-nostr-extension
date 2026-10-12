@@ -7702,7 +7702,19 @@
         return "";
     }
   }
-  function createPromptFlow({ windows, now: now2 = () => Date.now() } = {}) {
+  function createPromptFlow({
+    windows,
+    now: now2 = () => Date.now(),
+    // US-1723 — push a frame to the bound port of a request's window. Keyed by
+    // requestId: the prompt port's name is `nostr-prompt-<requestId>`, so the
+    // worker binds requestId -> port on connect, resolved without a persisted
+    // field. Defaults to a no-op so callers that never settle are unaffected.
+    deliver = () => {
+    },
+    // US-1723 — how long (ms) the outcome beat stays visible before the window
+    // closes.
+    beatMs = 800
+  } = {}) {
     const outstanding = /* @__PURE__ */ new Map();
     const awaitingSettle = /* @__PURE__ */ new Map();
     if (windows?.onRemoved?.addListener) {
@@ -7740,6 +7752,31 @@
         } else {
           rec.reject({ ...USER_DENIED });
         }
+        return { delivered: true };
+      },
+      /**
+       * US-1723 — the device op settled (`outcome` is 'ok' or 'err'). Push the
+       * outcome to the request's window port and, after a visible beat, close it.
+       * A settle for an unknown requestId (a worker restart ate the map) is inert
+       * — no throw, no store write, no resurrection of state: awaitingSettle is
+       * in-memory only, so the session-record shape gains no field.
+       */
+      async settle(requestId, outcome, message) {
+        const rec = awaitingSettle.get(requestId);
+        if (!rec) return { delivered: false };
+        awaitingSettle.delete(requestId);
+        deliver(requestId, {
+          event: "prompt-settled",
+          requestId,
+          outcome,
+          // US-1723 — the typed error sentence (e.g. the 6985 touch timeout)
+          // rides along for 'err'; 'ok' carries none.
+          ...message != null ? { message } : {}
+        });
+        setTimeout(() => {
+          windows.remove(rec.windowId).catch(() => {
+          });
+        }, beatMs);
         return { delivered: true };
       },
       /** Approved-but-not-yet-settled requests (US-1722). */
@@ -7844,7 +7881,12 @@
     await pending.load();
     await pending.adopt();
     const permissions = createPermissionStore({ storage: chrome_.storage.local });
-    const prompt = createPromptFlow({ windows: chrome_.windows });
+    const requestPorts = /* @__PURE__ */ new Map();
+    const deliver = (requestId, frame) => {
+      const port = requestPorts.get(requestId);
+      if (port) port.postMessage(frame);
+    };
+    const prompt = createPromptFlow({ windows: chrome_.windows, deliver, beatMs: 800 });
     const consent = createConsentGate({
       permissions,
       prompt,
@@ -7872,6 +7914,8 @@
     const route = createDispatch(handlers);
     chrome_.runtime.onConnect.addListener((port) => {
       attachPortListener(port, route);
+      const bound = /^nostr-prompt-(.+)$/.exec(port.name);
+      if (bound) requestPorts.set(bound[1], port);
       pending.takeForPort(port.name).then((replies) => {
         for (const reply of replies) port.postMessage(reply);
       }).catch(() => {

@@ -165,3 +165,60 @@ test('US-1722 a window closed BEFORE approval still rejects typed user-denied', 
   await assert.rejects(() => decision, (err) => err.code === 'user-denied');
   assert.equal(prompt.awaitingSettleCount, 0, 'nothing moved to awaiting-settle');
 });
+
+// US-1723 — the device op settled. The outcome is pushed to the request's
+// window port and, after a visible beat, the window is closed. A settle for an
+// unknown requestId (a worker restart ate the map) is inert — no throw, no
+// push, no resurrection; remove on an already-closed window is swallowed.
+test('US-1723 settle(ok) pushes the outcome frame and schedules the close after the beat', async () => {
+  const windows = fakeWindows();
+  const delivered = [];
+  const prompt = createPromptFlow({ windows, now: () => 0, beatMs: 0, deliver: (id, frame) => delivered.push([id, frame]) });
+  const decision = prompt.ask({ requestId: 'r1', method: 'sign_event', host: 'h.example', preview: 'x' });
+  await new Promise((r) => setImmediate(r));
+  await prompt.decide({ requestId: 'r1', approve: true });
+
+  assert.equal(prompt.awaitingSettleCount, 1);
+  const before = windows.removedCount;
+  await prompt.settle('r1', 'ok');
+  assert.deepEqual(delivered, [['r1', { event: 'prompt-settled', requestId: 'r1', outcome: 'ok' }]], 'the outcome frame is pushed');
+  assert.equal(prompt.awaitingSettleCount, 0, 'the record is dropped once settled');
+  assert.equal(windows.removedCount, before, 'the close is scheduled, not immediate');
+  await new Promise((r) => setTimeout(r, 5));
+  assert.equal(windows.removedCount, before + 1, 'the window closes after the beat');
+});
+
+test('US-1723 settle(err, message) pushes the typed error sentence', async () => {
+  const windows = fakeWindows();
+  const delivered = [];
+  const prompt = createPromptFlow({ windows, beatMs: 0, deliver: (_id, frame) => delivered.push(frame) });
+  const decision = prompt.ask({ requestId: 'r2', method: 'sign_event', host: 'h.example', preview: 'x' });
+  await new Promise((r) => setImmediate(r));
+  await prompt.decide({ requestId: 'r2', approve: true });
+
+  await prompt.settle('r2', 'err', 'the touch timed out');
+  assert.deepEqual(delivered[0], { event: 'prompt-settled', requestId: 'r2', outcome: 'err', message: 'the touch timed out' });
+});
+
+test('US-1723 settle for an unknown requestId is inert — no throw, no push, no resurrection', async () => {
+  const windows = fakeWindows();
+  const delivered = [];
+  const prompt = createPromptFlow({ windows, beatMs: 0, deliver: (_id, frame) => delivered.push([_id, frame]) });
+
+  assert.deepEqual(await prompt.settle('ghost', 'ok'), { delivered: false });
+  assert.deepEqual(delivered, [], 'nothing pushed');
+  assert.equal(prompt.awaitingSettleCount, 0, 'no state resurrected');
+});
+
+test('US-1723 settle after the window already closed swallows the remove', async () => {
+  const windows = fakeWindows();
+  const prompt = createPromptFlow({ windows, beatMs: 0, deliver: (_id, frame) => {} });
+  const decision = prompt.ask({ requestId: 'r3', method: 'sign_event', host: 'h.example', preview: 'x' });
+  await new Promise((r) => setImmediate(r));
+  await prompt.decide({ requestId: 'r3', approve: true });
+  await windows.close(windows.created[0].id); // gone before settle
+
+  assert.deepEqual(await prompt.settle('r3', 'ok'), { delivered: true }, 'settle still resolves');
+  await new Promise((r) => setTimeout(r, 5));
+  assert.equal(windows.removedCount, 1, 'the post-close remove is swallowed, not double-counted');
+});

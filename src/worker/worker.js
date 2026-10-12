@@ -31,7 +31,16 @@ export async function bootWorker({
   await pending.adopt();
 
   const permissions = createPermissionStore({ storage: chrome_.storage.local });
-  const prompt = createPromptFlow({ windows: chrome_.windows });
+  // US-1723 — the prompt port's name is `nostr-prompt-<requestId>`, so this map
+  // binds a connected prompt port back to its request. Resolved from the port
+  // name on connect (no new persisted field); settle() uses it to push the
+  // outcome frame to exactly that window.
+  const requestPorts = new Map();
+  const deliver = (requestId, frame) => {
+    const port = requestPorts.get(requestId);
+    if (port) port.postMessage(frame);
+  };
+  const prompt = createPromptFlow({ windows: chrome_.windows, deliver, beatMs: 800 });
   const consent = createConsentGate({
     permissions,
     prompt,
@@ -61,6 +70,10 @@ export async function bootWorker({
 
   chrome_.runtime.onConnect.addListener((port) => {
     attachPortListener(port, route);
+    // US-1723 — a prompt port's name is `nostr-prompt-<requestId>`; bind it so
+    // settle() can push the outcome frame to exactly that request's window.
+    const bound = /^nostr-prompt-(.+)$/.exec(port.name);
+    if (bound) requestPorts.set(bound[1], port);
     // Re-delivery: a bridge reconnecting under the same port name after a
     // worker restart picks up the outstanding reply or typed error.
     pending
