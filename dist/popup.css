@@ -54,6 +54,7 @@ header h1 {
 #device-dot.connected::before { background: var(--ok); }
 #device-dot.absent::before { background: var(--err); }
 #device-dot.busy::before { background: var(--amber); }
+#device-dot.error::before { background: var(--err); }
 
 main { padding: 12px 14px 14px; }
 

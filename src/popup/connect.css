@@ -39,3 +39,4 @@ main .card {
 .connect-state { font: 12px/1.4 var(--mono); color: var(--ink-dim); min-height: 18px; }
 .connect-state.connected { color: var(--ok); }
 .connect-state.waiting { color: var(--amber); }
+.connect-state.error { color: var(--err); }

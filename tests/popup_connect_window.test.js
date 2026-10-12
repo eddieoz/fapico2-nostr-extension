@@ -7,7 +7,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createConnectFlow } from '../src/popup/connect.js';
+import { createConnectFlow, connectStateLabel } from '../src/popup/connect.js';
 
 function rig({ requestDeviceImpl, pairResult, autoCloseMs = 5 } = {}) {
   const seen = { chooserCalls: 0, filter: null, pairCalls: 0, closeEvents: 0, persisted: [] };
@@ -108,4 +108,66 @@ test('connect window: a worker busy on both probes stays busy — amber, never a
   });
   const h = await flow.health({ force: true });
   assert.equal(h.state, 'busy');
+});
+
+// --- US-1713 — the connect page's named states (connectStateLabel) ------------
+
+test('connect window: each health state maps to its named label (US-1713)', async () => {
+  // connected — the board granted access.
+  {
+    const { flow } = rig();
+    const h = await flow.connect();
+    assert.deepEqual(connectStateLabel(h.state, h.message), {
+      line: 'fapico2 board connected', dot: 'connected', lineClass: 'connect-state connected',
+    });
+  }
+  // busy — the worker's 1 s probe window (amber), probed via health.
+  {
+    const flow = createConnectFlow({
+      requestDevice: async () => [],
+      busyRetryMs: 5,
+      call: async (method) => {
+        if (method === 'device_status') return { state: 'busy', code: 'RATE_LIMITED' };
+        throw new Error(`unexpected method ${method}`);
+      },
+    });
+    const h = await flow.health({ force: true });
+    assert.deepEqual(connectStateLabel(h.state, h.message), {
+      line: 'busy — retrying in a second', dot: 'busy', lineClass: 'connect-state waiting',
+    });
+  }
+  // absent — the chooser came up empty (a dismissed refusal): the honest line.
+  {
+    const { flow } = rig({ requestDeviceImpl: async () => [] });
+    const h = await flow.connect();
+    assert.equal(h.state, 'absent');
+    assert.deepEqual(connectStateLabel(h.state, h.message), {
+      line: 'no board granted yet', dot: 'absent', lineClass: 'connect-state',
+    });
+  }
+  // error — a granted-but-failing board: the device-error line, not the absent one.
+  {
+    const { flow } = rig({ pairResult: { state: 'error', message: 'device error' } });
+    const h = await flow.connect();
+    assert.equal(h.state, 'error');
+    assert.equal(h.message, 'device error');
+    assert.deepEqual(connectStateLabel(h.state, h.message), {
+      line: 'device error — device error', dot: 'error', lineClass: 'connect-state error',
+    });
+  }
+});
+
+test('connect window: idle and absent share the honest line; error is distinct (US-1713)', () => {
+  const idle = connectStateLabel('idle');
+  const absent = connectStateLabel('absent');
+  // The pre-boot placeholder reads the same honest line as an absent board.
+  assert.deepEqual(idle, absent);
+  assert.equal(idle.line, 'no board granted yet');
+  assert.equal(idle.lineClass, 'connect-state');
+  // error is a different state entirely — different line, different class.
+  const err = connectStateLabel('error', 'device error');
+  assert.notEqual(err.line, absent.line);
+  assert.equal(err.line, 'device error — device error');
+  assert.equal(err.lineClass, 'connect-state error');
+  assert.notEqual(err.lineClass, absent.lineClass);
 });

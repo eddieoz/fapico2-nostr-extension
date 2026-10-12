@@ -123,6 +123,20 @@
       }
     };
   }
+  function connectStateLabel(state, message) {
+    switch (state) {
+      case "connected":
+        return { line: "fapico2 board connected", dot: "connected", lineClass: "connect-state connected" };
+      case "busy":
+        return { line: "busy \u2014 retrying in a second", dot: "busy", lineClass: "connect-state waiting" };
+      case "error":
+        return { line: `device error \u2014 ${message ?? "try again"}`, dot: "error", lineClass: "connect-state error" };
+      case "idle":
+      case "absent":
+      default:
+        return { line: "no board granted yet", dot: "absent", lineClass: "connect-state" };
+    }
+  }
   if (typeof document !== "undefined" && document.getElementById("connect")) {
     let notice = function(msg, cls = "") {
       const el = $("notice");
@@ -132,18 +146,14 @@
     }, setDot = function(stateName) {
       const dot = $("device-dot");
       dot.className = stateName;
-      dot.textContent = stateName === "connected" ? "connected" : stateName === "absent" ? "not present" : stateName === "busy" ? "busy" : "checking";
+      dot.textContent = stateName === "connected" ? "connected" : stateName === "absent" ? "not present" : stateName === "busy" ? "busy" : stateName === "error" ? "error" : "checking";
     }, render = function(h) {
       if (!h) return;
-      if (h.state === "busy") {
-        setDot("busy");
-        $("connect-state").textContent = "busy \u2014 retrying in a second";
-        $("connect-state").className = "connect-state waiting";
-        return;
-      }
-      setDot(h.state === "connected" ? "connected" : "absent");
-      $("connect-state").textContent = h.state === "connected" ? "fapico2 board connected" : "no board granted yet";
-      $("connect-state").className = h.state === "connected" ? "connect-state connected" : "connect-state";
+      const { line, dot, lineClass } = connectStateLabel(h.state, h.message);
+      setDot(dot);
+      const el = $("connect-state");
+      el.textContent = line;
+      el.className = lineClass;
     };
     const api = createPortClient();
     const $ = (id) => document.getElementById(id);
