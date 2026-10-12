@@ -21,7 +21,7 @@ import {
   SW_WORDS,
   SLOTS,
 } from './keys.js';
-import { homeScreenFor, homeActions } from './home-state.js';
+import { homeScreenFor, homeActions, deviceCardModel, tryAgain } from './home-state.js';
 
 const api = createPortClient();
 const $ = (id) => document.getElementById(id);
@@ -85,10 +85,13 @@ function setDeviceDot(stateName) {
   state.deviceState = stateName;
   const dot = $('device-dot');
   dot.className = stateName;
+  // One rendering per state: error keeps its own word so it never reads as the
+  // absent "not present" (which would send a granted user back to "connect it").
   dot.textContent =
     stateName === 'connected' ? 'connected' :
     stateName === 'absent' ? 'not present' :
-    stateName === 'busy' ? 'busy' : 'checking';
+    stateName === 'busy' ? 'busy' :
+    stateName === 'error' ? 'error' : 'checking';
 }
 
 // --- device card (US-1702) ----------------------------------------------------
@@ -106,20 +109,16 @@ const pairing = createPairing({
 function renderDeviceCard(h) {
   if (!h) return;
   state.lastHealth = h;
-  if (h.state === 'busy') {
-    // The probe window is rate-limited, not broken — amber, and the boot
-    // path retries once below.
-    setDeviceDot('busy');
-    $('device-state').textContent = 'busy — retrying in a second';
-    return;
-  }
-  setDeviceDot(h.state === 'connected' ? 'connected' : 'absent');
-  $('device-state').innerHTML =
-    h.state === 'connected'
-      ? 'fapico2 board <b>connected</b>'
-      : h.state === 'absent'
-        ? 'no fapico2 board granted — connect it'
-        : 'device error';
+  // US-1717 — one rendering path driven by the pure model, so the three
+  // non-busy states can never drift back into a single rendering. busy is the
+  // probe window (amber, retried once by the boot path); error is its own card
+  // with a Try again action, never the absent "connect it" line.
+  const model = deviceCardModel(h);
+  setDeviceDot(model.dot);
+  const stateEl = $('device-state');
+  stateEl.innerHTML = model.line;
+  const tryAgainBtn = $('try-again');
+  if (tryAgainBtn) tryAgainBtn.hidden = !model.tryAgain;
 }
 
 async function healthCheck({ force = false } = {}) {
@@ -188,6 +187,12 @@ $('connect').addEventListener('click', async () => {
     }
   }
 });
+
+// US-1717 — Try again: re-run the health check with force:true so a granted but
+// failing board is re-probed instead of telling the user to "connect it".
+// healthCheck re-renders the card on its way back, so one click issues exactly
+// one forced probe.
+$('try-again').addEventListener('click', () => tryAgain(() => healthCheck({ force: true })));
 
 // --- keys home (US-1703) -------------------------------------------------------
 

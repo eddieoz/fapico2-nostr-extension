@@ -20,7 +20,10 @@
     <section class="card" id="device-card">
       <div class="row">
         <span class="device-state" id="device-state">checking…</span>
-        <button id="connect" class="primary">Connect</button>
+        <div class="card-actions">
+          <button id="try-again" class="primary" hidden>Try again</button>
+          <button id="connect" class="primary">Connect</button>
+        </div>
       </div>
       <div class="active-strip" id="active-strip" role="status"></div>
     </section>

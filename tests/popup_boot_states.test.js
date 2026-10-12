@@ -5,7 +5,7 @@
 // routes to connect-first (it is the probe window, not absence).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { homeScreenFor, homeActions } from '../src/popup/home-state.js';
+import { homeScreenFor, homeActions, deviceCardModel, tryAgain } from '../src/popup/home-state.js';
 
 test('US-1715 a persisted connected card reopens on the normal keys home (fast path)', () => {
   assert.equal(homeScreenFor({ state: 'connected' }), 'keys');
@@ -49,4 +49,40 @@ test('US-1716 connected enables Generate and Import', () => {
 test('US-1716 a mid-session connect re-renders to the normal keys home with working actions', () => {
   assert.equal(homeScreenFor({ state: 'connected' }), 'keys');
   assert.equal(homeActions(true).generate, 'on');
+});
+
+// US-1717 — the device card renders the three non-busy states distinctly. A
+// granted-but-failing board says "device error — try again" with a Try again
+// action and its own dot; it is never rendered as the absent "connect it".
+test('US-1717 an error state renders the error card with a Try again action', () => {
+  const m = deviceCardModel({ state: 'error', message: 'open failure' });
+  assert.equal(m.dot, 'error');
+  assert.equal(m.line, 'device error — try again');
+  assert.equal(m.tryAgain, true);
+});
+
+test('US-1717 an absent board never renders the error line or a Try again', () => {
+  const m = deviceCardModel({ state: 'absent' });
+  assert.notEqual(m.dot, 'error');
+  assert.doesNotMatch(m.line, /device error/i);
+  assert.equal(m.tryAgain, false);
+});
+
+test('US-1717 connected and busy never offer a Try again', () => {
+  assert.equal(deviceCardModel({ state: 'connected' }).tryAgain, false);
+  assert.equal(deviceCardModel({ state: 'busy' }).tryAgain, false);
+});
+
+test('US-1717 Try again re-issues exactly one forced probe', async () => {
+  let calls = 0;
+  const seen = [];
+  const probe = async (opts) => {
+    calls += 1;
+    seen.push(opts);
+    return { state: 'connected' };
+  };
+  const result = await tryAgain(probe);
+  assert.equal(calls, 1);
+  assert.deepEqual(seen, [{ force: true }]);
+  assert.deepEqual(result, { state: 'connected' });
 });

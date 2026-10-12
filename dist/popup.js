@@ -7001,6 +7001,23 @@
     if (deviceConnected) return { generate: "on", import: "on", reason: null };
     return { generate: "disabled", import: "disabled", reason: "needs the board connected" };
   }
+  function deviceCardModel(health) {
+    switch (health?.state) {
+      case "connected":
+        return { dot: "connected", line: "fapico2 board <b>connected</b>", tryAgain: false };
+      case "absent":
+        return { dot: "absent", line: "no fapico2 board granted \u2014 connect it", tryAgain: false };
+      case "error":
+        return { dot: "error", line: "device error \u2014 try again", tryAgain: true };
+      case "busy":
+        return { dot: "busy", line: "busy \u2014 retrying in a second", tryAgain: false };
+      default:
+        return { dot: "checking", line: "checking\u2026", tryAgain: false };
+    }
+  }
+  async function tryAgain(probe) {
+    return probe({ force: true });
+  }
 
   // src/popup/popup.js
   var api = createPortClient();
@@ -7060,7 +7077,7 @@
     state.deviceState = stateName;
     const dot = $("device-dot");
     dot.className = stateName;
-    dot.textContent = stateName === "connected" ? "connected" : stateName === "absent" ? "not present" : stateName === "busy" ? "busy" : "checking";
+    dot.textContent = stateName === "connected" ? "connected" : stateName === "absent" ? "not present" : stateName === "busy" ? "busy" : stateName === "error" ? "error" : "checking";
   }
   var pairing = createPairing({
     requestDevice: (opts) => navigator.hid.requestDevice(opts),
@@ -7075,13 +7092,12 @@
   function renderDeviceCard(h) {
     if (!h) return;
     state.lastHealth = h;
-    if (h.state === "busy") {
-      setDeviceDot("busy");
-      $("device-state").textContent = "busy \u2014 retrying in a second";
-      return;
-    }
-    setDeviceDot(h.state === "connected" ? "connected" : "absent");
-    $("device-state").innerHTML = h.state === "connected" ? "fapico2 board <b>connected</b>" : h.state === "absent" ? "no fapico2 board granted \u2014 connect it" : "device error";
+    const model = deviceCardModel(h);
+    setDeviceDot(model.dot);
+    const stateEl = $("device-state");
+    stateEl.innerHTML = model.line;
+    const tryAgainBtn = $("try-again");
+    if (tryAgainBtn) tryAgainBtn.hidden = !model.tryAgain;
   }
   async function healthCheck({ force = false } = {}) {
     let h = await pairing.health({ force });
@@ -7127,6 +7143,7 @@
       }
     }
   });
+  $("try-again").addEventListener("click", () => tryAgain(() => healthCheck({ force: true })));
   function renderActive() {
     const m = activeKeyModel(state.keys, state.activeSlot);
     const strip = $("active-strip");
