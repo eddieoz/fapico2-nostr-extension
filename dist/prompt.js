@@ -370,6 +370,12 @@
     return { chip: m || "unknown", headline: (preview2 ?? "").trim() || m || "unknown" };
   }
 
+  // src/prompt/remember-copy.js
+  function rememberCopy(host2) {
+    const site = host2 && host2 !== "unknown site" ? host2 : "this site";
+    return `Remember this choice for ${site} \u2014 for this action only; the device touch is still required every time.`;
+  }
+
   // src/prompt/prompt.js
   var api = createPortClient({ name: "nostr-prompt" });
   var $ = (id) => document.getElementById(id);
@@ -379,6 +385,7 @@
   var host = params.get("host") ?? "unknown site";
   var preview = params.get("preview") ?? "";
   $("host").textContent = host;
+  $("remember-note").textContent = rememberCopy(host);
   var render = requestRender(preview, method);
   $("method-chip").textContent = render.chip;
   $("headline").textContent = escapeHtml(render.headline);

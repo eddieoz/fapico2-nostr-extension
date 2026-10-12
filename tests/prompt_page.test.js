@@ -11,6 +11,7 @@ import { readFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { requestRender } from '../src/prompt/request-render.js';
+import { rememberCopy } from '../src/prompt/remember-copy.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFile(join(root, p), 'utf8');
@@ -85,4 +86,33 @@ test('US-1719 the identity row is advisory — one step stronger than dim, never
   const rule = block(css, '\.request-identity');
   assert.ok(/color:\s*var\(--ink\)/.test(rule), 'stronger than the --ink-dim chassis text');
   assert.ok(!/var\(--err\)|var\(--amber\)/.test(rule), 'no error/amber alarm styling');
+});
+
+// US-1720 — the remember copy is one short sentence naming the site but keeps
+// BOTH clauses the store actually delivers, and never over-promises. The pure
+// renderer is asserted directly; the wiring (checkbox gates only `remember`,
+// the touch footnote stays) is asserted on the source.
+test('US-1720 remember copy names the site and pins both load-bearing clauses', () => {
+  const c = rememberCopy('snort.social');
+  assert.ok(c.includes('snort.social'), 'names the site');
+  assert.ok(c.includes('for this action only'), 'clause 1: this site, for this action only');
+  assert.ok(c.includes('the device touch is still required every time'), 'clause 2: touch still required every time');
+});
+
+test('US-1720 remember copy never promises "never asked again" beyond what the store delivers', () => {
+  assert.ok(!/asked again|never asked|not be asked/i.test(rememberCopy('snort.social')), 'no over-promise');
+  assert.ok(/this site/.test(rememberCopy('')), 'an unknown host falls back without a false site name');
+});
+
+test('US-1720 the over-promising "asked again" copy is gone; the touch footnote stays', async () => {
+  const html = await read('src/prompt/prompt.html');
+  assert.ok(!/will not be asked again|not be asked again|never asked/i.test(html), 'the over-promising copy is gone');
+  assert.ok(/is the final consent/i.test(html), 'the touch = final-consent footnote is unchanged');
+});
+
+test('US-1720 the checkbox still gates only `remember` — the decision payload is unchanged', async () => {
+  const js = await read('src/prompt/prompt.js');
+  const reads = js.match(/\$\('remember'\)\.checked/g) ?? [];
+  assert.equal(reads.length, 1, 'the checkbox value feeds exactly one field');
+  assert.ok(/remember:\s*\$\('remember'\)\.checked/.test(js), 'and that field is `remember`');
 });

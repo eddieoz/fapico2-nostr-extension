@@ -8,6 +8,7 @@
 import { createPortClient } from '../shared/port-client.js';
 import { identityLine } from './identity.js';
 import { requestRender } from './request-render.js';
+import { rememberCopy } from './remember-copy.js';
 
 const api = createPortClient({ name: 'nostr-prompt' });
 const $ = (id) => document.getElementById(id);
@@ -19,6 +20,7 @@ const host = params.get('host') ?? 'unknown site';
 const preview = params.get('preview') ?? '';
 
 $('host').textContent = host;
+$('remember-note').textContent = rememberCopy(host);
 const render = requestRender(preview, method);
 $('method-chip').textContent = render.chip;
 $('headline').textContent = escapeHtml(render.headline);
