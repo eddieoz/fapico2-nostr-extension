@@ -1,22 +1,8 @@
 /* The approval prompt — the same industrial utilitarian system as the
    popup: charcoal chassis, amber reserved for the touch that follows.
-   This window's one job: context before the touch. */
-
-:root {
-  --bg: #14171c;
-  --bg-raise: #1e2229;
-  --bg-inset: #0d0f12;
-  --line: #2c313a;
-  --line-strong: #3d4450;
-  --ink: #d7dce3;
-  --ink-dim: #8a919c;
-  --amber: #ffb340;
-  --err: #ff8080;
-  --mono: ui-monospace, 'JetBrains Mono', 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
-  --sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
-}
-
-* { box-sizing: border-box; }
+   This window's one job: context before the touch.
+   Variables and the cross-page primitives live in tokens.css (US-1711);
+   this sheet is the prompt's layout and page-specific primitives only. */
 
 body {
   margin: 0;
@@ -73,7 +59,6 @@ label.check {
   font: 12px/1.5 var(--sans);
   color: var(--ink);
 }
-input[type='checkbox'] { accent-color: var(--amber); }
 
 .actions {
   display: flex;
@@ -90,7 +75,6 @@ button {
   cursor: pointer;
   flex: 1;
 }
-button:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
 button.approve {
   background: var(--amber);
   border-color: var(--amber);

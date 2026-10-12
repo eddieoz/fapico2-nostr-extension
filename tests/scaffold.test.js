@@ -28,6 +28,10 @@ test('US-1689 the build emitted a loadable MV3 bundle', async () => {
   for (const chunk of ['worker.js', 'bridge.js', 'provider.js', 'popup.js', 'prompt.js', 'ceremony.js']) {
     assert.ok(await exists(join(dist, chunk)), `dist/${chunk}`);
   }
+  // US-1711 — the shared token sheet is a verbatim copy, not an esbuild entry.
+  for (const css of ['tokens.css', 'popup.css', 'prompt.css']) {
+    assert.ok(await exists(join(dist, css)), `dist/${css}`);
+  }
 });
 
 test('US-1689 the manifest parses and every entry it names exists in dist/', async () => {

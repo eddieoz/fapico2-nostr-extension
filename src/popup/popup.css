@@ -3,26 +3,9 @@
    the touch state (the one thing that glows), monospace-first data type.
    MV3 CSP forbids remote fonts, so the terminal stack carries the identity
    locally. 8px spacing rhythm, hairline separators, no rounded UI-kit
-   softness — panels are stamped, not pillowed. */
-
-:root {
-  --bg: #14171c;           /* panel chassis */
-  --bg-raise: #1e2229;     /* the icon's charcoal */
-  --bg-inset: #0d0f12;
-  --line: #2c313a;
-  --line-strong: #3d4450;
-  --ink: #d7dce3;
-  --ink-dim: #8a919c;
-  --amber: #ffb340;        /* the device LED — touch state only */
-  --amber-dim: #7a5518;
-  --ok: #7ddc7d;
-  --err: #ff8080;
-  --mono: ui-monospace, 'JetBrains Mono', 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
-  --sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --r: 8px;
-}
-
-* { box-sizing: border-box; }
+   softness — panels are stamped, not pillowed.
+   Variables and the cross-page primitives live in tokens.css (US-1711);
+   this sheet is the popup's layout and page-specific primitives only. */
 
 body {
   margin: 0;
@@ -105,7 +88,6 @@ button {
   cursor: pointer;
 }
 button:hover { border-color: var(--amber-dim); }
-button:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
 button.primary {
   background: var(--amber);
   border-color: var(--amber);
@@ -187,10 +169,6 @@ input[type='text'], input[type='password'], textarea {
   font: 12px/1.4 var(--mono);
   padding: 7px 8px;
 }
-input:focus-visible, textarea:focus-visible { outline: 2px solid var(--amber); outline-offset: 0; border-color: var(--amber); }
-
-input[type='checkbox'] { accent-color: var(--amber); }
-
 .check {
   display: flex;
   gap: 8px;
