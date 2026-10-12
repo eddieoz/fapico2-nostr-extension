@@ -364,23 +364,24 @@
     return `with ${npub.slice(0, 20)}\u2026${npub.slice(-4)} (slot ${slot})`;
   }
 
+  // src/prompt/request-render.js
+  function requestRender(preview2, method2) {
+    const m = String(method2 ?? "");
+    return { chip: m || "unknown", headline: (preview2 ?? "").trim() || m || "unknown" };
+  }
+
   // src/prompt/prompt.js
   var api = createPortClient({ name: "nostr-prompt" });
   var $ = (id) => document.getElementById(id);
-  var METHOD_WORDS = {
-    get_public_key: "read the public key (npub) of your identity",
-    sign_event: "sign a Nostr event with your device key",
-    list_keys: "list the identities on your device",
-    nip44_encrypt: "encrypt a message with your device key",
-    nip44_decrypt: "decrypt a message with your device key"
-  };
   var params = new URLSearchParams(location.search);
   var requestId = params.get("request") ?? "";
   var method = params.get("method") ?? "";
   var host = params.get("host") ?? "unknown site";
   var preview = params.get("preview") ?? "";
   $("host").textContent = host;
-  $("wants").innerHTML = `This site wants to <span class="what">${METHOD_WORDS[method] ?? method}</span>.` + (preview ? `<br>${escapeHtml(preview)}` : "");
+  var render = requestRender(preview, method);
+  $("method-chip").textContent = render.chip;
+  $("headline").textContent = escapeHtml(render.headline);
   $("hint").textContent = method === "get_public_key" ? "Your npub is public \u2014 but which sites may see it is still your call." : "Nothing is signed, encrypted or decrypted until you approve.";
   var withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("slow")), ms))]);
   if (method !== "list_keys") {
