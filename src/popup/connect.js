@@ -31,12 +31,31 @@ export function createConnectFlow({ requestDevice, call, persist = () => {}, onC
   const pairing = createPairing({ requestDevice, call, persist });
   let closed = false;
 
+  // US-1714 — touch-free key count for the handoff. A rejection returns null so
+  // the caller (handoffDecision) closes rather than hangs; never block a
+  // successful pair on a listing error.
+  async function listKeyCount() {
+    try {
+      const keys = await call('list_keys');
+      return Array.isArray(keys) ? keys.length : 0;
+    } catch {
+      return null;
+    }
+  }
+
   return {
     /** The Connect click — runs the chooser in this gesture. */
     async connect() {
       try {
         const health = await pairing.connect();
         if (health.state === 'connected' && !closed) {
+          // US-1714 — first-run handoff: a freshly paired board with zero keys
+          // stays open (points at the toolbar icon) so the journey doesn't
+          // silently end; a returning board, or a listing that failed, closes
+          // after the beat.
+          if (handoffDecision(await listKeyCount()).handoff) {
+            return { ...health, handoff: true };
+          }
           closed = true;
           setTimeout(onClose, autoCloseMs);
         }
@@ -69,6 +88,15 @@ export function createConnectFlow({ requestDevice, call, persist = () => {}, onC
       return pairing.lastHealth;
     },
   };
+}
+
+// US-1714 — first-run handoff decision. A freshly paired board with zero keys
+// stays open (the journey otherwise silently ends); a returning board — or one
+// whose key listing failed (`keyCount` is null) — closes after the beat so a
+// successful pair never leaves the window hung.
+export function handoffDecision(keyCount) {
+  if (keyCount == null) return { close: true, handoff: false };
+  return { close: keyCount > 0, handoff: keyCount === 0 };
 }
 
 // US-1713 — the connect page's named states, as a pure mapping so each state's
@@ -130,6 +158,15 @@ if (typeof document !== 'undefined' && document.getElementById('connect')) {
   // states can never drift apart again.
   function render(h) {
     if (!h) return;
+    // US-1714 — freshly paired with zero keys: stay open, point at the toolbar
+    // icon (the actual next action), rather than auto-closing the journey.
+    if (h.handoff) {
+      setDot('connected');
+      const el = $('connect-state');
+      el.textContent = 'connected — open the fapico2 toolbar icon to create your first key';
+      el.className = 'connect-state connected';
+      return;
+    }
     const { line, dot, lineClass } = connectStateLabel(h.state, h.message);
     setDot(dot);
     const el = $('connect-state');

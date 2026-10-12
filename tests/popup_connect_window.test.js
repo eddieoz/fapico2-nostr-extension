@@ -7,10 +7,10 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createConnectFlow, connectStateLabel } from '../src/popup/connect.js';
+import { createConnectFlow, connectStateLabel, handoffDecision } from '../src/popup/connect.js';
 
-function rig({ requestDeviceImpl, pairResult, autoCloseMs = 5 } = {}) {
-  const seen = { chooserCalls: 0, filter: null, pairCalls: 0, closeEvents: 0, persisted: [] };
+function rig({ requestDeviceImpl, pairResult, listKeysResult = [{ id: 'k1' }], autoCloseMs = 5 } = {}) {
+  const seen = { chooserCalls: 0, filter: null, pairCalls: 0, listKeysCalls: 0, closeEvents: 0, persisted: [] };
   const requestDevice = async (opts) => {
     seen.chooserCalls++;
     seen.filter = opts;
@@ -21,6 +21,11 @@ function rig({ requestDeviceImpl, pairResult, autoCloseMs = 5 } = {}) {
       seen.pairCalls++;
       if (pairResult instanceof Error) throw pairResult;
       return pairResult ?? { state: 'connected', version: '0.1.0' };
+    }
+    if (method === 'list_keys') {
+      seen.listKeysCalls++;
+      if (listKeysResult instanceof Error) throw listKeysResult;
+      return listKeysResult;
     }
     throw new Error(`unexpected method ${method}`);
   };
@@ -170,4 +175,38 @@ test('connect window: idle and absent share the honest line; error is distinct (
   assert.equal(err.line, 'device error — device error');
   assert.equal(err.lineClass, 'connect-state error');
   assert.notEqual(err.lineClass, absent.lineClass);
+});
+
+// --- US-1714 — first-run handoff: a zero-key board stays, returning closes ----
+
+test('connect window: a freshly paired zero-key board stays open for the handoff (US-1714)', async () => {
+  const { flow, seen } = rig({ listKeysResult: [] });
+  const health = await flow.connect();
+  assert.equal(health.state, 'connected');
+  assert.equal(health.handoff, true);
+  assert.equal(seen.listKeysCalls, 1);
+  assert.equal(seen.closeEvents, 0); // closeSelf not scheduled — the journey stays alive
+});
+
+test('connect window: a returning board auto-closes after the beat (US-1714)', async () => {
+  const { flow, seen } = rig({ listKeysResult: [{ id: 'k1' }, { id: 'k2' }], autoCloseMs: 5 });
+  const health = await flow.connect();
+  assert.equal(health.state, 'connected');
+  assert.equal(health.handoff, undefined);
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(seen.closeEvents, 1); // the green beat, then dismiss
+});
+
+test('connect window: a list_keys failure degrades to closing (US-1714)', async () => {
+  const { flow, seen } = rig({ listKeysResult: new Error('listing failed'), autoCloseMs: 5 });
+  const health = await flow.connect();
+  assert.equal(health.state, 'connected');
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(seen.closeEvents, 1); // never blocks a successful pair on a listing error
+});
+
+test('handoff decision: zero keys stays; keys present or listing fails closes (US-1714)', () => {
+  assert.deepEqual(handoffDecision(0), { close: false, handoff: true });
+  assert.deepEqual(handoffDecision(3), { close: true, handoff: false });
+  assert.deepEqual(handoffDecision(null), { close: true, handoff: false });
 });

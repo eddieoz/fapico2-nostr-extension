@@ -89,12 +89,23 @@
   }, autoCloseMs = 1500, busyRetryMs = 1100 }) {
     const pairing = createPairing({ requestDevice, call, persist });
     let closed = false;
+    async function listKeyCount() {
+      try {
+        const keys = await call("list_keys");
+        return Array.isArray(keys) ? keys.length : 0;
+      } catch {
+        return null;
+      }
+    }
     return {
       /** The Connect click — runs the chooser in this gesture. */
       async connect() {
         try {
           const health = await pairing.connect();
           if (health.state === "connected" && !closed) {
+            if (handoffDecision(await listKeyCount()).handoff) {
+              return { ...health, handoff: true };
+            }
             closed = true;
             setTimeout(onClose, autoCloseMs);
           }
@@ -123,6 +134,10 @@
       }
     };
   }
+  function handoffDecision(keyCount) {
+    if (keyCount == null) return { close: true, handoff: false };
+    return { close: keyCount > 0, handoff: keyCount === 0 };
+  }
   function connectStateLabel(state, message) {
     switch (state) {
       case "connected":
@@ -149,6 +164,13 @@
       dot.textContent = stateName === "connected" ? "connected" : stateName === "absent" ? "not present" : stateName === "busy" ? "busy" : stateName === "error" ? "error" : "checking";
     }, render = function(h) {
       if (!h) return;
+      if (h.handoff) {
+        setDot("connected");
+        const el2 = $("connect-state");
+        el2.textContent = "connected \u2014 open the fapico2 toolbar icon to create your first key";
+        el2.className = "connect-state connected";
+        return;
+      }
       const { line, dot, lineClass } = connectStateLabel(h.state, h.message);
       setDot(dot);
       const el = $("connect-state");
