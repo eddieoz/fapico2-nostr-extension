@@ -71,18 +71,28 @@ export function buildPreview(method, args = []) {
 
 /**
  * The prompt orchestration. `windows` is a chrome.windows-shaped double:
- * `{ create(opts) -> {id}, onRemoved: {addListener(fn)} }`. Decisions
- * arrive from the prompt page through the dispatch (`prompt_decision`).
+ * `{ create(opts) -> {id}, onRemoved: {addListener(fn)}, remove(id) }`.
+ * Decisions arrive from the prompt page through the dispatch (`prompt_decision`).
+ *
+ * A request lives in one of two maps. `outstanding` holds the pre-approve
+ * record (a window close there is an explicit deny). Once approved, `decide`
+ * moves it to `awaitingSettle` (kept, with its windowId): the consent promise
+ * has already resolved exactly once and the handler path is unchanged, but the
+ * record must survive so a post-approval window close is a no-op (US-1722) and
+ * US-1723's settle() can push the outcome and drop it.
  */
 export function createPromptFlow({ windows, now = () => Date.now() } = {}) {
   const outstanding = new Map(); // requestId -> {resolve, reject, windowId}
+  const awaitingSettle = new Map(); // requestId -> {windowId}
 
   if (windows?.onRemoved?.addListener) {
     windows.onRemoved.addListener((windowId) => {
       for (const [id, rec] of [...outstanding.entries()]) {
         if (rec.windowId !== windowId) continue;
         outstanding.delete(id);
-        // Closing the window is an explicit reject — never a hang.
+        // Closing the window BEFORE approval is an explicit reject — never a
+        // hang. A window closed AFTER approval lives in awaitingSettle, so it
+        // is not touched here (US-1722 — post-approval close is a no-op).
         rec.reject({ ...USER_DENIED, message: 'the approval window was closed — request denied' });
       }
     });
@@ -113,9 +123,21 @@ export function createPromptFlow({ windows, now = () => Date.now() } = {}) {
       const rec = outstanding.get(requestId);
       if (!rec) return { delivered: false };
       outstanding.delete(requestId);
-      if (approve) rec.resolve({ approved: true, remember, at: now() });
-      else rec.reject({ ...USER_DENIED });
+      if (approve) {
+        // US-1722 — resolve exactly once (handler path unchanged), but keep the
+        // record in awaitingSettle with its windowId so a post-approval close is
+        // a no-op and US-1723 can settle it.
+        awaitingSettle.set(requestId, { windowId: rec.windowId });
+        rec.resolve({ approved: true, remember, at: now() });
+      } else {
+        rec.reject({ ...USER_DENIED });
+      }
       return { delivered: true };
+    },
+
+    /** Approved-but-not-yet-settled requests (US-1722). */
+    get awaitingSettleCount() {
+      return awaitingSettle.size;
     },
 
     get outstandingCount() {

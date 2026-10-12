@@ -14,6 +14,14 @@ function fakeWindows() {
   const removedListeners = [];
   let nextId = 100;
   const created = [];
+  const removedIds = new Set();
+  // US-1722/US-1723 — firing onRemoved for a window that is already gone is a
+  // benign race, so the guard makes a second close/remove inert (swallowed).
+  function fireRemoved(id) {
+    if (removedIds.has(id)) return;
+    removedIds.add(id);
+    for (const fn of [...removedListeners]) fn(id);
+  }
   return {
     created,
     create: async (opts) => {
@@ -21,7 +29,12 @@ function fakeWindows() {
       created.push(win);
       return win;
     },
-    close: async (id) => removedListeners.forEach((fn) => fn(id)),
+    close: async (id) => fireRemoved(id),
+    // US-1723 — the settle path closes the window through this.
+    remove: async (id) => fireRemoved(id),
+    get removedCount() {
+      return removedIds.size;
+    },
     onRemoved: { addListener: (fn) => removedListeners.push(fn) },
   };
 }
@@ -118,4 +131,37 @@ test('US-1700 the signEvent preview names the kind and a one-line content summar
 test('US-1700 a decision for an unknown or already-settled request is inert', async () => {
   const prompt = createPromptFlow({ windows: fakeWindows() });
   assert.deepEqual(await prompt.decide({ requestId: 'ghost', approve: true }), { delivered: false });
+});
+
+// US-1722 — the approval window stays open through the touch. Approve resolves
+// the consent promise exactly once and moves the record to awaiting-settle; a
+// window close AFTER approval is therefore a no-op (never a user-denied reject),
+// while a close BEFORE approval still rejects typed (the invariant above).
+test('US-1722 approve keeps the record awaiting-settle — a later window close never rejects', async () => {
+  const windows = fakeWindows();
+  const prompt = createPromptFlow({ windows, now: () => 42 });
+  const decision = prompt.ask({ requestId: 'r5', method: 'sign_event', host: 'h.example', preview: 'x' });
+  await new Promise((r) => setImmediate(r));
+
+  assert.equal(prompt.outstandingCount, 1, 'outstanding before the decision');
+  await prompt.decide({ requestId: 'r5', approve: true, remember: false });
+  assert.deepEqual(await decision, { approved: true, remember: false, at: 42 }, 'resolves exactly once');
+  assert.equal(prompt.outstandingCount, 0, 'no longer outstanding after approval');
+  assert.equal(prompt.awaitingSettleCount, 1, 'the record is kept, awaiting settle');
+
+  // US-1722 — the window closes AFTER approval (and a second remove is swallowed):
+  // neither may reject the resolved promise or resurrect the record.
+  await windows.close(windows.created[0].id);
+  await windows.remove(windows.created[0].id);
+  assert.equal(prompt.awaitingSettleCount, 1, 'post-approval close is a no-op');
+});
+
+test('US-1722 a window closed BEFORE approval still rejects typed user-denied', async () => {
+  const windows = fakeWindows();
+  const prompt = createPromptFlow({ windows });
+  const decision = prompt.ask({ requestId: 'r6', method: 'sign_event', host: 'h.example', preview: 'x' });
+  await new Promise((r) => setImmediate(r));
+  await windows.close(windows.created[0].id);
+  await assert.rejects(() => decision, (err) => err.code === 'user-denied');
+  assert.equal(prompt.awaitingSettleCount, 0, 'nothing moved to awaiting-settle');
 });

@@ -7704,6 +7704,7 @@
   }
   function createPromptFlow({ windows, now: now2 = () => Date.now() } = {}) {
     const outstanding = /* @__PURE__ */ new Map();
+    const awaitingSettle = /* @__PURE__ */ new Map();
     if (windows?.onRemoved?.addListener) {
       windows.onRemoved.addListener((windowId) => {
         for (const [id, rec] of [...outstanding.entries()]) {
@@ -7733,9 +7734,17 @@
         const rec = outstanding.get(requestId);
         if (!rec) return { delivered: false };
         outstanding.delete(requestId);
-        if (approve) rec.resolve({ approved: true, remember, at: now2() });
-        else rec.reject({ ...USER_DENIED });
+        if (approve) {
+          awaitingSettle.set(requestId, { windowId: rec.windowId });
+          rec.resolve({ approved: true, remember, at: now2() });
+        } else {
+          rec.reject({ ...USER_DENIED });
+        }
         return { delivered: true };
+      },
+      /** Approved-but-not-yet-settled requests (US-1722). */
+      get awaitingSettleCount() {
+        return awaitingSettle.size;
       },
       get outstandingCount() {
         return outstanding.size;
