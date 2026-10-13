@@ -18,6 +18,7 @@ import {
   decodeImportSecret,
   validateLabel,
   npubBech32,
+  deleteConfirmModel,
   SW_WORDS,
   SLOTS,
 } from './keys.js';
@@ -425,10 +426,11 @@ $('go-import').addEventListener('click', () => {
 
 function openDelete(row) {
   state.deleteTarget = row;
+  const m = deleteConfirmModel(row, state.activeSlot);
   $('delete-what').innerHTML =
-    `This destroys <code>${npubBech32(row.pubkey)}</code> (slot ${row.idx}${row.label ? `, “${escapeHtml(row.label)}”` : ''}). The key is gone from the device.`;
-  if (row.idx === state.activeSlot) {
-    $('delete-what').innerHTML += ` This is your active key — after deleting, the active key resets to slot 0.`;
+    `This destroys <b>${escapeHtml(m.name)}</b> — <code>${escapeHtml(m.npub)}</code>${m.whereClause}. The key is gone from the device.`;
+  if (m.activeSentence) {
+    $('delete-what').innerHTML += ` ${m.activeSentence}`;
   }
   $('delete-understand').checked = false;
   $('delete-confirm').disabled = true;

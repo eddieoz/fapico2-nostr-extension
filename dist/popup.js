@@ -6957,6 +6957,21 @@
       strip: active ? `active key: ${active.npubBech32.slice(0, 20)}\u2026${active.npubBech32.slice(-4)} (slot ${active.idx})` : "no active key yet"
     };
   }
+  function deleteConfirmModel(row, activeSlot) {
+    const npub = npubBech32(row.pubkey);
+    const clipped = npub.length > 24 ? `${npub.slice(0, 20)}\u2026${npub.slice(-4)}` : npub;
+    const labeled = !!row.label;
+    return {
+      // The name the user knows: the label, or the slot number when unlabeled —
+      // the slot is never dropped even though the truncated npub stands in for
+      // the full identity (the truncated npub never disappears entirely).
+      name: labeled ? `\u201C${row.label}\u201D` : `slot ${row.idx}`,
+      npub: clipped,
+      slot: row.idx,
+      whereClause: labeled ? ` (slot ${row.idx})` : "",
+      activeSentence: row.idx === activeSlot ? "This is your active key \u2014 after deleting, the active key resets to slot 0." : null
+    };
+  }
   function decodeImportSecret(input) {
     const raw = String(input ?? "").trim();
     if (raw.length === 0) {
@@ -7361,9 +7376,10 @@
   });
   function openDelete(row) {
     state.deleteTarget = row;
-    $("delete-what").innerHTML = `This destroys <code>${npubBech32(row.pubkey)}</code> (slot ${row.idx}${row.label ? `, \u201C${escapeHtml(row.label)}\u201D` : ""}). The key is gone from the device.`;
-    if (row.idx === state.activeSlot) {
-      $("delete-what").innerHTML += ` This is your active key \u2014 after deleting, the active key resets to slot 0.`;
+    const m = deleteConfirmModel(row, state.activeSlot);
+    $("delete-what").innerHTML = `This destroys <b>${escapeHtml(m.name)}</b> \u2014 <code>${escapeHtml(m.npub)}</code>${m.whereClause}. The key is gone from the device.`;
+    if (m.activeSentence) {
+      $("delete-what").innerHTML += ` ${m.activeSentence}`;
     }
     $("delete-understand").checked = false;
     $("delete-confirm").disabled = true;

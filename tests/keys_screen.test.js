@@ -12,7 +12,7 @@ import { readFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { SLOTS } from '../src/popup/keys.js';
+import { SLOTS, deleteConfirmModel } from '../src/popup/keys.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFile(join(root, p), 'utf8');
@@ -214,5 +214,38 @@ test('US-1728 a free slot reads open/clickable, distinct from taken', () => {
   assert.ok(free, 'a .slot-picker button.free rule exists');
   assert.match(free, /background:\s*var\(--bg\)/, 'free is a lighter open fill');
   assert.match(free, /cursor:\s*pointer/, 'free is clickable');
+});
+
+// --- US-1729: delete confirm — recognition, not a bech32 wall ---------------
+
+const DEL_PUBKEY = 'a'.repeat(64); // any 32-byte hex; bech32 length is what matters
+const delRow = (idx, label) => ({ pubkey: DEL_PUBKEY, idx, label });
+
+test('US-1729 a labeled target names the label, a truncated npub, and the slot', () => {
+  const m = deleteConfirmModel(delRow(3, 'my wallet'), 0);
+  assert.equal(m.name, '“my wallet”', 'the label is the primary name');
+  assert.match(m.npub, /…/, 'the npub is truncated — not the full 63-char wall');
+  assert.ok(m.npub.length < 40, `the truncated npub is short (${m.npub.length} chars)`);
+  assert.equal(m.slot, 3, 'the slot number is shown');
+  assert.equal(m.whereClause, ' (slot 3)', 'a labeled key still carries its slot');
+});
+
+test('US-1729 an unlabeled target uses the slot number as the primary name', () => {
+  const m = deleteConfirmModel(delRow(5, null), 0);
+  assert.equal(m.name, 'slot 5', 'the slot number is the primary name when unlabeled');
+  assert.ok(m.npub.length > 0, 'the truncated npub never disappears entirely');
+  assert.equal(m.whereClause, '', 'no redundant "(slot N)" when the slot already IS the name');
+});
+
+test('US-1729 the active-key sentence appears iff the target is active', () => {
+  const expected = 'This is your active key — after deleting, the active key resets to slot 0.';
+  assert.equal(deleteConfirmModel(delRow(1, 'x'), 1).activeSentence, expected);
+  assert.equal(deleteConfirmModel(delRow(1, 'x'), 9).activeSentence, null, 'absent when the target is not active');
+});
+
+test('US-1729 the popup renders the delete confirm from the model (naming stays single-sourced)', () => {
+  assert.match(src, /const m = deleteConfirmModel\(row, state\.activeSlot\)/, 'openDelete builds from deleteConfirmModel');
+  assert.match(src, /escapeHtml\(m\.name\)/, 'the name is rendered (escaped)');
+  assert.match(src, /m\.activeSentence/, 'the active sentence is appended only when present');
 });
 

@@ -48,6 +48,29 @@ export function activeKeyModel(keys, activeSlot, { slots = SLOTS } = {}) {
   };
 }
 
+/** US-1729 — the delete-confirm's naming line, extracted pure so the three
+ *  facts the user needs to RECOGNISE the key (the name it has — label or
+ *  "slot N"; the truncated npub; the slot) and the active-key sentence are
+ *  testable without the DOM. Presentation only: the firmware's full-npub echo
+ *  check (worker delete_key + the popup's mismatched-echo catch) is untouched. */
+export function deleteConfirmModel(row, activeSlot) {
+  const npub = npubBech32(row.pubkey);
+  const clipped = npub.length > 24 ? `${npub.slice(0, 20)}…${npub.slice(-4)}` : npub;
+  const labeled = !!row.label;
+  return {
+    // The name the user knows: the label, or the slot number when unlabeled —
+    // the slot is never dropped even though the truncated npub stands in for
+    // the full identity (the truncated npub never disappears entirely).
+    name: labeled ? `“${row.label}”` : `slot ${row.idx}`,
+    npub: clipped,
+    slot: row.idx,
+    whereClause: labeled ? ` (slot ${row.idx})` : '',
+    activeSentence: row.idx === activeSlot
+      ? 'This is your active key — after deleting, the active key resets to slot 0.'
+      : null,
+  };
+}
+
 /**
  * US-1705 — decode/validate the pasted secret LOCALLY, before the touch:
  * `nsec1…` (bech32) or a 64-hex-char scalar. Returns {scalarHex, npubHex,
