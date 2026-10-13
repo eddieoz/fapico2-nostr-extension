@@ -122,11 +122,12 @@
         });
       }
       try {
+        const requestId = port ? `${port.name}/${id}` : id;
         const result = await methods[method](frame.args ?? [], {
           sender,
           port,
           trusted,
-          requestId: id
+          requestId
         });
         return reply({ result });
       } catch (err) {

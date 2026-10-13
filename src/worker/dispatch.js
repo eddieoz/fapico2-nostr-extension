@@ -89,11 +89,19 @@ export function createDispatch(methods, { extensionId = chrome.runtime.id } = {}
     }
 
     try {
+      // US-1735 — frame ids are per-connection counters (the provider's `p0…`
+      // per page, the port client's `c0…` per popup) while the worker's
+      // request maps are global: two tabs' concurrent first calls both arrive
+      // as `p0` and the second overwrites the first. The composite keeps the
+      // two apart; the REPLY below still echoes the bare frame id, because
+      // the bridge and the provider match replies by it. A direct route call
+      // with no port (the test-runner shape) keeps the bare id.
+      const requestId = port ? `${port.name}/${id}` : id;
       const result = await methods[method](frame.args ?? [], {
         sender,
         port,
         trusted,
-        requestId: id,
+        requestId,
       });
       return reply({ result });
     } catch (err) {

@@ -76,6 +76,14 @@ export async function bootWorker({
     if (bound) requestPorts.set(bound[1], port);
     // Re-delivery: a bridge reconnecting under the same port name after a
     // worker restart picks up the outstanding reply or typed error.
+    // NOTE (US-1735): in practice this path is dead for relayed (tab)
+    // requests — the consent gate persists every record with the constant
+    // `portName: 'nostr-consent'`, which no connecting port ever uses (the
+    // bridge reconnects as `nostr-<random>`). That is epic §6's
+    // worker-restart gap, deliberately out of scope. Whoever revives this
+    // path must translate the record's composite id (`portName/frameId`)
+    // back to the BARE frame id before re-delivering, or the page's pending
+    // map will never match the reply.
     pending
       .takeForPort(port.name)
       .then((replies) => {
