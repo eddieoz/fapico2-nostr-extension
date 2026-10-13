@@ -19,8 +19,9 @@
 // abandoned port never touches the fresh one.
 
 const STALE_MS = 20000; // the worker's idle window is ~30 s
+const HEARTBEAT_MS = 20000; // US-1745 — keep the worker alive while a page is open
 
-export function createPortClient({ chrome_ = chrome, name = null, now = Date.now } = {}) {
+export function createPortClient({ chrome_ = chrome, name = null, now = Date.now, heartbeatMs = HEARTBEAT_MS } = {}) {
   const portName = name ?? `nostr-page-${Math.floor(Math.random() * 1e9).toString(36)}`;
   let seq = 0;
   const pending = new Map();
@@ -85,24 +86,47 @@ export function createPortClient({ chrome_ = chrome, name = null, now = Date.now
     }
   }
 
+  // US-1745 — the root of the board-run bug family was the worker idling
+  // out MID-FLOW (a human at a chooser, a decision, a touch): the op dies,
+  // and the killed worker can even leak its open device handle until a
+  // browser restart. While a page is open, a 20 s echo keeps the worker
+  // alive; when the page closes the interval dies with it and the worker
+  // idles normally. The bridge is not this client, so web tabs never keep
+  // the worker alive.
+  let heartbeatTimer = null;
+  function call(method, ...args) {
+    return new Promise((resolve, reject) => {
+      const id = `c${seq++}`;
+      pending.set(id, { resolve, reject });
+      try {
+        send({ id, method, args });
+      } catch {
+        pending.delete(id);
+        // US-1741 — typed, never Chrome's internal string.
+        const err = new Error('the connection to the extension was lost — try again');
+        err.name = 'TransportError';
+        err.code = 'transport-lost';
+        reject(err);
+      }
+    });
+  }
+
+  if (heartbeatMs > 0) {
+    heartbeatTimer = setInterval(() => {
+      call('echo').catch(() => {
+        /* the staleness guard reconnects; typed errors surface on real calls */
+      });
+    }, heartbeatMs);
+  }
+
   return {
     portName,
-    call(method, ...args) {
-      return new Promise((resolve, reject) => {
-        const id = `c${seq++}`;
-        pending.set(id, { resolve, reject });
-        try {
-          send({ id, method, args });
-        } catch {
-          pending.delete(id);
-          // US-1741 — typed, never Chrome's internal string.
-          const err = new Error('the connection to the extension was lost — try again');
-          err.name = 'TransportError';
-          err.code = 'transport-lost';
-          reject(err);
-        }
-      });
+    /** US-1745 — stops the heartbeat (tests; pages die naturally). */
+    dispose() {
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
     },
+    call,
     // US-1721 — subscribe to worker push frames ({event, ...}, no id). Returns
     // an unsubscribe fn.
     onEvent(fn) {

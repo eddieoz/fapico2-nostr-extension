@@ -1,7 +1,8 @@
 (() => {
   // src/shared/port-client.js
   var STALE_MS = 2e4;
-  function createPortClient({ chrome_ = chrome, name = null, now = Date.now } = {}) {
+  var HEARTBEAT_MS = 2e4;
+  function createPortClient({ chrome_ = chrome, name = null, now = Date.now, heartbeatMs = HEARTBEAT_MS } = {}) {
     const portName = name ?? `nostr-page-${Math.floor(Math.random() * 1e9).toString(36)}`;
     let seq = 0;
     const pending = /* @__PURE__ */ new Map();
@@ -50,23 +51,36 @@
         port.postMessage(frame);
       }
     }
+    let heartbeatTimer = null;
+    function call(method, ...args) {
+      return new Promise((resolve, reject) => {
+        const id = `c${seq++}`;
+        pending.set(id, { resolve, reject });
+        try {
+          send({ id, method, args });
+        } catch {
+          pending.delete(id);
+          const err = new Error("the connection to the extension was lost \u2014 try again");
+          err.name = "TransportError";
+          err.code = "transport-lost";
+          reject(err);
+        }
+      });
+    }
+    if (heartbeatMs > 0) {
+      heartbeatTimer = setInterval(() => {
+        call("echo").catch(() => {
+        });
+      }, heartbeatMs);
+    }
     return {
       portName,
-      call(method, ...args) {
-        return new Promise((resolve, reject) => {
-          const id = `c${seq++}`;
-          pending.set(id, { resolve, reject });
-          try {
-            send({ id, method, args });
-          } catch {
-            pending.delete(id);
-            const err = new Error("the connection to the extension was lost \u2014 try again");
-            err.name = "TransportError";
-            err.code = "transport-lost";
-            reject(err);
-          }
-        });
+      /** US-1745 — stops the heartbeat (tests; pages die naturally). */
+      dispose() {
+        if (heartbeatTimer) clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
       },
+      call,
       // US-1721 — subscribe to worker push frames ({event, ...}, no id). Returns
       // an unsubscribe fn.
       onEvent(fn) {

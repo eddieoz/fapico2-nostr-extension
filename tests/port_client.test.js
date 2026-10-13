@@ -9,7 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createPortClient } from '../src/shared/port-client.js';
 
-function rig() {
+function rig({ heartbeatMs } = {}) {
   const ports = [];
   let connectThrows = false;
   let killNextPorts = 0;
@@ -40,7 +40,9 @@ function rig() {
     },
   };
   const clock = { v: 1000000 };
-  const client = createPortClient({ chrome_, name: 'nostr-test', now: () => clock.v });
+  // heartbeatMs defaults to 0 in tests: a repeating interval would hold the
+  // event loop open forever; only the heartbeat test opts in.
+  const client = createPortClient({ chrome_, name: 'nostr-test', now: () => clock.v, heartbeatMs: heartbeatMs ?? 0, ...(heartbeatMs ? {} : {}) });
   const last = () => ports[ports.length - 1];
   return {
     client,
@@ -234,3 +236,19 @@ test('US-1744 a late disconnect from an abandoned port does not null the fresh o
   r.reply({ id: 'c1', result: { slot: 0 } });
   assert.deepEqual(await promise, { slot: 0 });
 });
+
+// US-1744 take two — the worker idling out mid-flow is the ROOT of the whole
+// board-run bug family: mid-op death loses calls and leaks the open device
+// handle ("The device is already open" until a browser restart). Extension
+// pages therefore heartbeat the worker while they are open (echo every 20 s
+// — the SW never idles during an active session; when the page closes, the
+// heartbeat stops and the worker idles normally). The bridge is not this
+// client, so web tabs never keep the worker alive.
+test('US-1745 the client heartbeats the worker while the page is open — the worker never idles mid-flow', async () => {
+  const r = rig({ heartbeatMs: 10 });
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  r.client.dispose();
+  const beats = r.ports[0].sent.filter((f) => f.method === 'echo');
+  assert.ok(beats.length >= 2, `echo frames flow while the page is open (got ${beats.length})`);
+});
+
