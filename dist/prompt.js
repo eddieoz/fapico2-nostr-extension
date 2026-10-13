@@ -99,7 +99,7 @@
     };
   }
 
-  // node_modules/@noble/hashes/esm/utils.js
+  // node_modules/.pnpm/@noble+hashes@1.8.0/node_modules/@noble/hashes/esm/utils.js
   var hasHexBuiltin = /* @__PURE__ */ (() => (
     // @ts-ignore
     typeof Uint8Array.from([]).toHex === "function" && typeof Uint8Array.fromHex === "function"
@@ -136,7 +136,7 @@
     return array;
   }
 
-  // node_modules/@scure/base/lib/esm/index.js
+  // node_modules/.pnpm/@scure+base@1.2.6/node_modules/@scure/base/lib/esm/index.js
   function isBytes(a) {
     return a instanceof Uint8Array || ArrayBuffer.isView(a) && a.constructor.name === "Uint8Array";
   }

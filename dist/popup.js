@@ -99,7 +99,7 @@
     };
   }
 
-  // node_modules/@scure/base/lib/esm/index.js
+  // node_modules/.pnpm/@scure+base@1.2.6/node_modules/@scure/base/lib/esm/index.js
   function isBytes(a) {
     return a instanceof Uint8Array || ArrayBuffer.isView(a) && a.constructor.name === "Uint8Array";
   }
@@ -397,7 +397,7 @@
     };
   }
 
-  // node_modules/@noble/hashes/esm/utils.js
+  // node_modules/.pnpm/@noble+hashes@1.8.0/node_modules/@noble/hashes/esm/utils.js
   function isBytes2(a) {
     return a instanceof Uint8Array || ArrayBuffer.isView(a) && a.constructor.name === "Uint8Array";
   }
@@ -454,7 +454,7 @@
     return array;
   }
 
-  // node_modules/nostr-tools/node_modules/@noble/hashes/utils.js
+  // node_modules/.pnpm/@noble+hashes@2.0.1/node_modules/@noble/hashes/utils.js
   function isBytes3(a) {
     return a instanceof Uint8Array || ArrayBuffer.isView(a) && a.constructor.name === "Uint8Array";
   }
@@ -586,7 +586,7 @@
     oid: Uint8Array.from([6, 9, 96, 134, 72, 1, 101, 3, 4, 2, suffix])
   });
 
-  // node_modules/nostr-tools/node_modules/@noble/hashes/_md.js
+  // node_modules/.pnpm/@noble+hashes@2.0.1/node_modules/@noble/hashes/_md.js
   function Chi(a, b, c) {
     return a & b ^ ~a & c;
   }
@@ -699,7 +699,7 @@
     1541459225
   ]);
 
-  // node_modules/nostr-tools/node_modules/@noble/hashes/sha2.js
+  // node_modules/.pnpm/@noble+hashes@2.0.1/node_modules/@noble/hashes/sha2.js
   var SHA256_K = /* @__PURE__ */ Uint32Array.from([
     1116352408,
     1899447441,
@@ -849,7 +849,7 @@
     /* @__PURE__ */ oidNist(1)
   );
 
-  // node_modules/nostr-tools/node_modules/@noble/curves/utils.js
+  // node_modules/.pnpm/@noble+curves@2.0.1/node_modules/@noble/curves/utils.js
   var _0n = /* @__PURE__ */ BigInt(0);
   var _1n = /* @__PURE__ */ BigInt(1);
   function abool(value, title = "") {
@@ -998,7 +998,7 @@
     };
   }
 
-  // node_modules/nostr-tools/node_modules/@noble/curves/abstract/modular.js
+  // node_modules/.pnpm/@noble+curves@2.0.1/node_modules/@noble/curves/abstract/modular.js
   var _0n2 = /* @__PURE__ */ BigInt(0);
   var _1n2 = /* @__PURE__ */ BigInt(1);
   var _2n = /* @__PURE__ */ BigInt(2);
@@ -1384,7 +1384,7 @@
     return isLE2 ? numberToBytesLE(reduced, fieldLen) : numberToBytesBE(reduced, fieldLen);
   }
 
-  // node_modules/nostr-tools/node_modules/@noble/curves/abstract/curve.js
+  // node_modules/.pnpm/@noble+curves@2.0.1/node_modules/@noble/curves/abstract/curve.js
   var _0n3 = /* @__PURE__ */ BigInt(0);
   var _1n3 = /* @__PURE__ */ BigInt(1);
   function negateCt(condition, item) {
@@ -1617,7 +1617,7 @@
     };
   }
 
-  // node_modules/nostr-tools/node_modules/@noble/hashes/hmac.js
+  // node_modules/.pnpm/@noble+hashes@2.0.1/node_modules/@noble/hashes/hmac.js
   var _HMAC = class {
     oHash;
     iHash;
@@ -1688,7 +1688,7 @@
   var hmac = (hash, key, message) => new _HMAC(hash, key).update(message).digest();
   hmac.create = (hash, key) => new _HMAC(hash, key);
 
-  // node_modules/nostr-tools/node_modules/@noble/curves/abstract/weierstrass.js
+  // node_modules/.pnpm/@noble+curves@2.0.1/node_modules/@noble/curves/abstract/weierstrass.js
   var divNearest = (num2, den) => (num2 + (num2 >= 0 ? den : -den) / _2n2) / den;
   function _splitEndoScalar(k, basis, n) {
     const [[a1, b1], [a2, b2]] = basis;
@@ -2560,7 +2560,7 @@
     });
   }
 
-  // node_modules/nostr-tools/node_modules/@noble/curves/secp256k1.js
+  // node_modules/.pnpm/@noble+curves@2.0.1/node_modules/@noble/curves/secp256k1.js
   var secp256k1_CURVE = {
     p: BigInt("0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f"),
     n: BigInt("0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"),
@@ -2713,7 +2713,7 @@
     };
   })();
 
-  // node_modules/nostr-tools/node_modules/@scure/base/index.js
+  // node_modules/.pnpm/@scure+base@2.0.0/node_modules/@scure/base/index.js
   function isBytes4(a) {
     return a instanceof Uint8Array || ArrayBuffer.isView(a) && a.constructor.name === "Uint8Array";
   }
@@ -3019,7 +3019,7 @@
   }
   var bech322 = /* @__PURE__ */ genBech322("bech32");
 
-  // node_modules/@noble/ciphers/utils.js
+  // node_modules/.pnpm/@noble+ciphers@2.1.1/node_modules/@noble/ciphers/utils.js
   function isBytes5(a) {
     return a instanceof Uint8Array || ArrayBuffer.isView(a) && a.constructor.name === "Uint8Array";
   }
@@ -3158,7 +3158,7 @@
     return Uint8Array.from(bytes);
   }
 
-  // node_modules/@noble/ciphers/aes.js
+  // node_modules/.pnpm/@noble+ciphers@2.1.1/node_modules/@noble/ciphers/aes.js
   var BLOCK_SIZE = 16;
   var POLY = 283;
   function validateKeyLength(key) {
@@ -3515,7 +3515,7 @@
   var cmac = (key, message) => new _CMAC(key).update(message).digest();
   cmac.create = (key) => new _CMAC(key);
 
-  // node_modules/@noble/ciphers/_arx.js
+  // node_modules/.pnpm/@noble+ciphers@2.1.1/node_modules/@noble/ciphers/_arx.js
   var encodeStr = (str) => Uint8Array.from(str.split(""), (c) => c.charCodeAt(0));
   var sigma16 = encodeStr("expand 16-byte k");
   var sigma32 = encodeStr("expand 32-byte k");
@@ -3624,7 +3624,7 @@
     };
   }
 
-  // node_modules/@noble/ciphers/_poly1305.js
+  // node_modules/.pnpm/@noble+ciphers@2.1.1/node_modules/@noble/ciphers/_poly1305.js
   function u8to16(a, i2) {
     return a[i2++] & 255 | (a[i2++] & 255) << 8;
   }
@@ -3882,7 +3882,7 @@
   }
   var poly1305 = /* @__PURE__ */ (() => wrapConstructorWithKey((key) => new Poly1305(key)))();
 
-  // node_modules/@noble/ciphers/chacha.js
+  // node_modules/.pnpm/@noble+ciphers@2.1.1/node_modules/@noble/ciphers/chacha.js
   function chachaCore(s, k, n, out, cnt, rounds = 20) {
     let y00 = s[0], y01 = s[1], y02 = s[2], y03 = s[3], y04 = k[0], y05 = k[1], y06 = k[2], y07 = k[3], y08 = k[4], y09 = k[5], y10 = k[6], y11 = k[7], y12 = cnt, y13 = n[0], y14 = n[1], y15 = n[2];
     let x00 = y00, x01 = y01, x02 = y02, x03 = y03, x04 = y04, x05 = y05, x06 = y06, x07 = y07, x08 = y08, x09 = y09, x10 = y10, x11 = y11, x12 = y12, x13 = y13, x14 = y14, x15 = y15;
@@ -4112,7 +4112,7 @@
   var chacha20poly1305 = /* @__PURE__ */ wrapCipher({ blockSize: 64, nonceLength: 12, tagLength: 16 }, _poly1305_aead(chacha20));
   var xchacha20poly1305 = /* @__PURE__ */ wrapCipher({ blockSize: 64, nonceLength: 24, tagLength: 16 }, _poly1305_aead(xchacha20));
 
-  // node_modules/nostr-tools/node_modules/@noble/hashes/hkdf.js
+  // node_modules/.pnpm/@noble+hashes@2.0.1/node_modules/@noble/hashes/hkdf.js
   function extract(hash, ikm, salt) {
     ahash(hash);
     if (salt === void 0)
@@ -4148,7 +4148,7 @@
     return okm.slice(0, length);
   }
 
-  // node_modules/nostr-tools/lib/esm/index.js
+  // node_modules/.pnpm/nostr-tools@2.25.2/node_modules/nostr-tools/lib/esm/index.js
   var __defProp = Object.defineProperty;
   var __export = (target, all) => {
     for (var name in all)

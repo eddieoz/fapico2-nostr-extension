@@ -14,16 +14,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-      - run: npm ci
-      - run: npm test
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
       - name: the committed dist/ must be fresh
         run: git diff --exit-code -- dist/
       - name: CDP smoke (US-1708) — release blocker when Chrome is present
-        run: npm run test:smoke
+        run: pnpm run test:smoke
         env:
           CHROME_PATH: /usr/bin/google-chrome
         continue-on-error: false

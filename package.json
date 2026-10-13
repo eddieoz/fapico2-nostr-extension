@@ -6,9 +6,9 @@
   "private": true,
   "scripts": {
     "build": "node build.mjs",
-    "test": "npm run build && node --test --test-concurrency=8 tests/*.test.js tests/smoke/*.test.js",
+    "test": "pnpm run build && node --test --test-concurrency=8 tests/*.test.js tests/smoke/*.test.js",
     "test:smoke": "node tests/smoke/run.js",
-    "check": "npm run build && git diff --exit-code -- dist/ && npm test"
+    "check": "pnpm run build && git diff --exit-code -- dist/ && pnpm test"
   },
   "license": "MIT",
   "devDependencies": {
