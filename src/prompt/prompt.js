@@ -28,7 +28,10 @@ $('host').textContent = host;
 $('remember-note').textContent = rememberCopy(host);
 const render = requestRender(preview, method);
 $('method-chip').textContent = render.chip;
-$('headline').textContent = escapeHtml(render.headline);
+// US-1738 — verbatim: the sink is textContent (safe by construction). The
+// escaping wrapper was load-bearing for the old innerHTML sink and only
+// double-escaped previews containing & < > " around the new one.
+$('headline').textContent = render.headline;
 $('hint').textContent =
   method === 'get_public_key'
     ? 'Your npub is public — but which sites may see it is still your call.'
@@ -112,7 +115,6 @@ api.onDisconnect(() => {
   if (done) return; // a settle already reached us — nothing to recover
   showLostConnection();
 });
-
 $('approve').addEventListener('click', () => {
   api
     .call('prompt_decision', {
@@ -131,7 +133,3 @@ $('deny').addEventListener('click', () => {
     .call('prompt_decision', { requestId, approve: false })
     .finally(() => window.close());
 });
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}

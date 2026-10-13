@@ -50,11 +50,20 @@ test('US-1718 the generic METHOD_WORDS sentence is gone from prompt.js', async (
   assert.ok(!/METHOD_WORDS/.test(js), 'the METHOD_WORDS map is removed');
 });
 
-test('US-1718 prompt.js drives the chip and headline hooks from requestRender', async () => {
+test('US-1718/US-1738 prompt.js drives the chip and headline hooks from requestRender — the sink is raw textContent', async () => {
   const js = await read('src/prompt/prompt.js');
   assert.ok(/import \{ requestRender \} from '\.\/request-render\.js'/.test(js), 'imports the pure renderer');
   assert.ok(/\$\('method-chip'\)\.textContent = render\.chip/.test(js), 'the chip hook is set from the renderer');
-  assert.ok(/\$\('headline'\)\.textContent = escapeHtml\(render\.headline\)/.test(js), 'the headline hook is set (escaped) from the renderer');
+  assert.ok(/\$\('headline'\)\.textContent = render\.headline/.test(js), 'the headline hook is set verbatim (US-1738: the textContent sink is safe by construction)');
+});
+
+// US-1738 — the escapeHtml wrapper was load-bearing for the old innerHTML
+// sink; kept around the new textContent assignment it double-escaped any
+// preview containing & < > " (e.g. an event's content summary). The sink is
+// safe by construction, so the escape layer is removed, not doubled.
+test('US-1738 no escapeHtml remains in the prompt page — the preview renders verbatim', async () => {
+  const js = await read('src/prompt/prompt.js');
+  assert.doesNotMatch(js, /escapeHtml/, 'no escape layer between the preview and the textContent sink');
 });
 
 test('US-1718 prompt.html carries the chip and headline hooks inside the request block', async () => {
