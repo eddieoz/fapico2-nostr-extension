@@ -48,7 +48,8 @@ header h1 {
 }
 .method-chip {
   align-self: flex-start;
-  font: 600 10px/1 var(--mono);
+  /* US-1733 — an interactive label at 10px was below the 11px type floor. */
+  font: 600 11px/1 var(--mono);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--ink-dim);
@@ -99,7 +100,8 @@ button.deny { color: var(--err); border-color: var(--err); background: transpare
 
 .footnote {
   margin-top: 12px;
-  font: 10px/1.6 var(--mono);
+  /* US-1733 — 10px was below the 11px type-size floor. */
+  font: 11px/1.6 var(--mono);
   color: var(--ink-dim);
 }
 
