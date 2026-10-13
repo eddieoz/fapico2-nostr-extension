@@ -1,7 +1,7 @@
 # US-1733 — the keyboard walk (a11y record)
 
 The story's acceptance: "manual keyboard walk of all screens recorded in the
-PR." Recorded 2026-10-13 against `feat/nostr` `c45914a` (dist rebuilt), driven
+PR." Recorded 2026-10-13 against `feat/nostr` `018ee84` (dist rebuilt), driven
 by real `Tab` key events through the real dist pages in a real Chrome
 (DevTools `Input.dispatchKeyEvent` — actual input events, native focus
 traversal, not synthetic `focus()`). Per-stop verification was mechanical:

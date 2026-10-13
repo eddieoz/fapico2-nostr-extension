@@ -9,8 +9,8 @@ incomplete entry stays open at the top until a complete one supersedes it.
 
 **Board:** fapico2, USB `FA20:0002` ("The BLOCO Community fapico2"),
 operator eddieoz (every chooser pick, approval, and device touch).
-**Extension:** `feat/nostr` dist, from `161bf89` + the typed-sentence fix
-`d21b86f` loaded mid-run. Chrome 154, real display, driven via CDP
+**Extension:** `feat/nostr` dist, from `9d830c8` + the typed-sentence fix
+`a182c4d` loaded mid-run. Chrome 154, real display, driven via CDP
 (trusted input events; the operator performed every consent decision).
 The operator also ran the product on the real Nostr site **ditto.pub**.
 
@@ -34,7 +34,7 @@ The operator also ran the product on the real Nostr site **ditto.pub**.
   works on hardware). First run exposed a real bug: the window showed the
   raw word "SIGN refused with 0x6985" instead of the typed sentence —
   `describeSw` was only applied in the popup's display path. **Fixed during
-  the run** (`d21b86f`, red-first: the sentence now crosses both the settle
+  the run** (`a182c4d`, red-first: the sentence now crosses both the settle
   push and the port boundary); the re-run showed **"touch timed out — the
   device asked for a touch and none came"** (operator-confirmed).
 - **sites revoke / revoke-all** — single revoke: one click, "revoked
@@ -45,7 +45,7 @@ The operator also ran the product on the real Nostr site **ditto.pub**.
 **Findings (the run's purpose):**
 
 1. **FIXED during the run** — the raw status word crossed the settle push
-   and the port boundary (`d21b86f`, this branch).
+   and the port boundary (`a182c4d`, this branch).
 2. **US-1741 (queued)** — extension pages don't heal their port after an
    MV3 worker restart (~30 s idle): the bridge reconnects lazily, the
    popup/connect pages don't. Real trigger: the operator sitting at the
@@ -71,13 +71,13 @@ full PASS.
 **Second-session findings (fixed in-branch):** US-1744 — the silent
 port black-hole (Chrome does not reliably deliver port.onDisconnect on
 worker idle death; a CDP monitor saw the worker start ZERO times during a
-hung connect) fixed by the staleness-guarded reconnect (`4519f12`); US-1745
+hung connect) fixed by the staleness-guarded reconnect (`bf98428`); US-1745
 — the root of the whole family, fixed by the extension-page heartbeat so
-the worker never idles mid-flow (`cc4795b`); US-1746 (CRITICAL) — the
+the worker never idles mid-flow (`651a86b`); US-1746 (CRITICAL) — the
 US-1743 Disconnect toggle revoked the vendor-interface grant through
 HIDDevice.forget(), which can never be re-granted through the UI (the
 firmware's vendor interface is hidden by the chooser) — the toggle was
-reverted and pinned gone (`ffa269f`); the Chrome quirk that WebHID grants
+reverted and pinned gone (`ab21b74`); the Chrome quirk that WebHID grants
 survive extension removal and the HID settings page does not list extension
 grants was recorded along the way.
 
