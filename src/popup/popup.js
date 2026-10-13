@@ -597,17 +597,31 @@ $('sites-list').addEventListener('click', async (ev) => {
   const btn = ev.target.closest('button[data-revoke]');
   if (!btn) return;
   const host = btn.dataset.revoke;
-  await api.call('revoke_grant', host);
-  notice(`revoked ${host}`, 'ok');
+  // US-1737 — the failure path reports too: a typed revoke error renders its
+  // sentence, and the list re-renders either way so the UI shows the true
+  // grant state (a failed revoke must never read as a successful one).
+  try {
+    await api.call('revoke_grant', host);
+    notice(`revoked ${host}`, 'ok');
+  } catch (err) {
+    notice(err.message ?? `could not revoke ${host}`, 'err');
+  }
   await loadSites();
 });
 
 revokeAllBtn.addEventListener('click', async () => {
   if (!revokeAll.armed()) { armRevokeAll(); return; }
   if (!revokeAll.confirm()) return;
-  await api.call('revoke_all');
+  // US-1737 — the arm is spent whether the revoke succeeded or failed: a
+  // typed failure renders its sentence and the button disarms, never a
+  // silent unhandled rejection with the arm still live.
+  try {
+    await api.call('revoke_all');
+    notice('revoked all grants', 'ok');
+  } catch (err) {
+    notice(err.message ?? 'could not revoke the grants', 'err');
+  }
   disarmRevokeAll();
-  notice('revoked all grants', 'ok');
   await loadSites();
 });
 

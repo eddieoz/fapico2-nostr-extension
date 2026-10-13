@@ -7563,8 +7563,12 @@
     const btn = ev.target.closest("button[data-revoke]");
     if (!btn) return;
     const host = btn.dataset.revoke;
-    await api.call("revoke_grant", host);
-    notice(`revoked ${host}`, "ok");
+    try {
+      await api.call("revoke_grant", host);
+      notice(`revoked ${host}`, "ok");
+    } catch (err) {
+      notice(err.message ?? `could not revoke ${host}`, "err");
+    }
     await loadSites();
   });
   revokeAllBtn.addEventListener("click", async () => {
@@ -7573,9 +7577,13 @@
       return;
     }
     if (!revokeAll.confirm()) return;
-    await api.call("revoke_all");
+    try {
+      await api.call("revoke_all");
+      notice("revoked all grants", "ok");
+    } catch (err) {
+      notice(err.message ?? "could not revoke the grants", "err");
+    }
     disarmRevokeAll();
-    notice("revoked all grants", "ok");
     await loadSites();
   });
   $("nav-keys").addEventListener("click", () => {

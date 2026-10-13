@@ -223,3 +223,29 @@ test('US-1732 every revoke shows a typed ok notice naming what it revoked', asyn
   // revoke-all names the batch
   assert.match(src, /notice\(\s*'revoked all grants'\s*,\s*'ok'\s*\)/, 'revoke-all notices the batch');
 });
+
+// US-1737 — the failure path reports too: a typed revoke error renders the
+// typed sentence, the armed revoke-all is spent either way, and the list
+// re-renders so the UI shows the true grant state.
+test('US-1737 the per-host revoke catches a typed failure and renders the err notice', async () => {
+  const src = await readPopup();
+  const block = src.slice(
+    src.indexOf("$('sites-list').addEventListener"),
+    src.indexOf("revokeAllBtn.addEventListener('click'"),
+  );
+  assert.match(block, /try\s*\{[\s\S]*?api\.call\('revoke_grant', host\)/, 'the worker call is guarded');
+  assert.match(block, /notice\(\s*err\.message\s*\?\?[^)]*'err'\s*\)/, 'the failure renders the typed err notice');
+});
+
+test('US-1737 revoke-all disarms and notices on the failure path — the arm is spent either way', async () => {
+  const src = await readPopup();
+  const block = src.slice(
+    src.indexOf("revokeAllBtn.addEventListener('click'"),
+    src.indexOf('// --- nav'),
+  );
+  assert.match(block, /try\s*\{[\s\S]*?api\.call\('revoke_all'\)/, 'the worker call is guarded');
+  assert.match(block, /catch\s*\(\w+\)\s*\{[\s\S]*?notice\([\s\S]*?'err'\s*\)/, 'the failure renders the typed err notice');
+  const iCatch = block.indexOf('} catch');
+  const iDisarm = block.indexOf('disarmRevokeAll()');
+  assert.ok(iCatch > -1 && iDisarm > iCatch, 'disarm runs after the guard, on both paths');
+});
