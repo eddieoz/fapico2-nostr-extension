@@ -53,7 +53,9 @@ header h1 {
 }
 #device-dot.connected::before { background: var(--ok); }
 #device-dot.absent::before { background: var(--err); }
-#device-dot.busy::before { background: var(--amber); }
+/* US-1740 addendum — D-UX2: amber is the touch state; busy is the probe
+   window (the word carries it), not a touch. */
+#device-dot.busy::before { background: var(--ink-dim); }
 #device-dot.error::before { background: var(--err); }
 
 main { padding: 12px 14px 14px; }
@@ -364,4 +366,6 @@ code { font-family: var(--mono); color: var(--amber); font-size: 11px; }
   font: 11px/1.4 var(--mono);
   color: var(--ink-dim);
 }
-.active-strip.none { color: var(--amber); border-color: var(--amber); }
+/* US-1740 addendum — D-UX2: the zero-key strip is a status, not a touch;
+   the copy ("no active key yet") carries it. */
+.active-strip.none { color: var(--ink-dim); border-color: var(--line); }
