@@ -5,6 +5,43 @@ the six ordered steps, their status words and timings, the operator, and
 the board/firmware it ran against. A partial pass is not a pass — an
 incomplete entry stays open at the top until a complete one supersedes it.
 
+## PENDING — US-1734 (NOT YET PASSED): the UX-journey gate, board run not yet performed
+
+> **This is not a pass and not an incomplete pass — no board has been run in
+> this environment.** There is no flashed fapico2 `feat/nostr` board here, so
+> the journey below cannot be exercised. This section records the gate's
+> status (step-wiring built and machine-tested; the board walk is
+> operator-pending) so the real result can be dropped in when hardware is
+> available.
+
+The US-1734 gate is the full product journey on the board — distinct from the
+US-1709 device-ceremony passes above:
+
+```
+connect  →  generate a key  →  switch the active key  →  sign on a site
+→  touch-timeout (6985)  →  sites revoke / revoke-all  →  delete key
+```
+
+**Already machine-verified (no board needed):**
+
+- Connect-page states, handoff and flow — `tests/connect_page.test.js`
+  (`1e825a6`): absent / busy / connected / error labels, the freshly paired
+  zero-key board staying open on handoff, a returning board closing after the
+  beat, a dismissed chooser returning to absent.
+- Prompt touch state and outcome beat — `tests/prompt_page.test.js` (US-1724):
+  Approve flips to the touch bar and stays open through the device touch
+  (D-UX6), Deny closes instantly, the 6985 touch-timed-out sentence settles
+  verbatim, and the page drives the outcome beat from the worker push.
+- The `0x6985` touch-timeout sentence is wired end-to-end:
+  `src/worker/error-map.js:19` → the prompt settles it verbatim
+  (`keys_generate.test.js`, US-1704).
+
+**Board run still required — record the real result here:** connect with the
+board granted, generate a key, switch the active key, sign on a site, trip a
+touch-timeout and confirm the 6985 sentence, revoke sites (and revoke-all),
+then delete the key. A full pass is one complete run; a partial or skipped
+step stays open at the top until a complete one supersedes it.
+
 ## PASSED — 2026-10-11, fapico-nostr `feat/nostr` (post-fix build)
 
 **Board:** fapico2, USB `FA20:0002` ("The BLOCO Community fapico2"),
