@@ -211,3 +211,15 @@ test('US-1724 the pulse primitive is shared (tokens.css), not duplicated per pag
   const popupCss = stripComments(await read('src/popup/popup.css'));
   assert.ok(!/keyframes\s+pulse/.test(popupCss), 'popup.css no longer defines its own pulse');
 });
+
+// US-1741 — self-healing ports mean an approve can reach a RESTARTED worker,
+// where the in-memory outstanding record is gone and decide() answers
+// {delivered: false}. The page must fail LOUD (the lost-connection notice) —
+// never flip to the touch bar for a decision nobody holds (a silent hang).
+test('US-1741 the approve handler fails loud on a lost decision — never a touch bar without a consent record', async () => {
+  const js = await read('src/prompt/prompt.js');
+  const body = handler(js, 'approve');
+  assert.ok(body, 'the approve handler exists');
+  assert.match(body, /delivered\s*===?\s*false/, 'it checks the decide() answer');
+  assert.match(body, /showLostConnection\(\)/, 'a lost decision shows the lost-connection notice');
+});

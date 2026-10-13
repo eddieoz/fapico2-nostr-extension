@@ -6,8 +6,17 @@
     const pending = /* @__PURE__ */ new Map();
     const eventFns = /* @__PURE__ */ new Set();
     const disconnectFns = /* @__PURE__ */ new Set();
-    const port = chrome_.runtime.connect({ name: portName });
-    port.onMessage.addListener((msg) => {
+    let port = connect();
+    function connect() {
+      const p = chrome_.runtime.connect({ name: portName });
+      p.onMessage.addListener(handle);
+      p.onDisconnect.addListener(() => {
+        port = null;
+        for (const fn of [...disconnectFns]) fn();
+      });
+      return p;
+    }
+    function handle(msg) {
       if (!msg) return;
       if (typeof msg.id !== "undefined") {
         const p = pending.get(msg.id);
@@ -26,17 +35,31 @@
         return;
       }
       for (const fn of [...eventFns]) fn(msg);
-    });
-    port.onDisconnect.addListener(() => {
-      for (const fn of [...disconnectFns]) fn();
-    });
+    }
+    function send(frame) {
+      if (!port) port = connect();
+      try {
+        port.postMessage(frame);
+      } catch {
+        port = connect();
+        port.postMessage(frame);
+      }
+    }
     return {
       portName,
       call(method, ...args) {
         return new Promise((resolve, reject) => {
           const id = `c${seq++}`;
           pending.set(id, { resolve, reject });
-          port.postMessage({ id, method, args });
+          try {
+            send({ id, method, args });
+          } catch {
+            pending.delete(id);
+            const err = new Error("the connection to the extension was lost \u2014 try again");
+            err.name = "TransportError";
+            err.code = "transport-lost";
+            reject(err);
+          }
         });
       },
       // US-1721 — subscribe to worker push frames ({event, ...}, no id). Returns

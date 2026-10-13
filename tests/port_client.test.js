@@ -10,34 +10,48 @@ import assert from 'node:assert/strict';
 import { createPortClient } from '../src/shared/port-client.js';
 
 function rig() {
-  const messageListeners = [];
-  const disconnectListeners = [];
-  const posted = [];
+  const ports = [];
+  let connectThrows = false;
+  let killNextPorts = 0;
+  const makePort = (name) => {
+    const listeners = { message: [], disconnect: [] };
+    const port = {
+      name,
+      postMessage: (msg) => {
+        if (port.dead) throw new Error('Attempting to use a disconnected port object');
+        port.sent.push(msg);
+      },
+      sent: [],
+      dead: killNextPorts > 0 && (killNextPorts -= 1) >= 0,
+      onMessage: { addListener: (fn) => listeners.message.push(fn) },
+      onDisconnect: { addListener: (fn) => listeners.disconnect.push(fn) },
+      __listeners: listeners,
+    };
+    return port;
+  };
   const chrome_ = {
     runtime: {
-      connect: () => ({
-        portName: 'test-port',
-        onMessage: { addListener: (fn) => messageListeners.push(fn) },
-        onDisconnect: { addListener: (fn) => disconnectListeners.push(fn) },
-        postMessage: (msg) => posted.push(msg),
-      }),
+      connect: ({ name }) => {
+        if (connectThrows) throw new Error('Extension context invalidated');
+        const p = makePort(name);
+        ports.push(p);
+        return p;
+      },
     },
   };
   const client = createPortClient({ chrome_, name: 'nostr-test' });
+  const last = () => ports[ports.length - 1];
   return {
     client,
-    posted,
+    ports,
+    last,
+    setConnectThrows: () => { connectThrows = true; },
+    killNextPorts: (n) => { killNextPorts = n; },
     // a frame the worker would postMessage to the page
-    push(msg) {
-      for (const fn of messageListeners) fn(msg);
-    },
+    push(msg) { for (const fn of last().__listeners.message) fn(msg); },
     // a framed reply (has an id) the worker would postMessage to the page
-    reply(msg) {
-      for (const fn of messageListeners) fn(msg);
-    },
-    disconnect() {
-      for (const fn of disconnectListeners) fn();
-    },
+    reply(msg) { for (const fn of last().__listeners.message) fn(msg); },
+    disconnect() { for (const fn of last().__listeners.disconnect) fn(); },
   };
 }
 
@@ -113,4 +127,58 @@ test('US-1721 onEvent and onDisconnect return an unsubscribe that stops delivery
   offD();
   r.disconnect();
   assert.equal(disconnected, 0);
+});
+
+// US-1741 — the board run: the worker idles out (~30 s) while a human sits at
+// the chooser; the page's next call posted into a DEAD port and Chrome's
+// internal "Attempting to use a disconnected port object" leaked into the
+// page. The client now heals like the bridge does: a disconnected port is
+// replaced lazily, under the SAME name (re-delivery and the prompt binding
+// ride the name), with the listeners re-attached; a send that still fails
+// rejects typed — never Chrome's internal string.
+
+test('US-1741 a call after a worker restart reconnects under the same name and still resolves', async () => {
+  const r = rig();
+  const p1 = r.ports[0];
+  r.disconnect(); // the worker restarted: port A is dead
+  const promise = r.client.call('get_active_slot');
+  const p2 = r.last();
+  assert.ok(p2 !== p1, 'a NEW port was created');
+  assert.equal(p2.name, p1.name, 'the reconnect rides the SAME port name');
+  assert.deepEqual(p2.sent, [{ id: 'c0', method: 'get_active_slot', args: [] }], 'the frame went to the new port');
+  r.reply({ id: 'c0', result: { slot: 2 } });
+  assert.deepEqual(await promise, { slot: 2 });
+});
+
+test('US-1741 the reconnected port carries the listeners — pushes and disconnects still flow', async () => {
+  const r = rig();
+  const seen = [];
+  r.client.onEvent((frame) => seen.push(frame));
+  let disconnects = 0;
+  r.client.onDisconnect(() => { disconnects += 1; });
+  r.disconnect();      // worker restart #1
+  r.push({ event: 'prompt-settled', requestId: 'r1' }); // via the NEW port
+  assert.deepEqual(seen, [{ event: 'prompt-settled', requestId: 'r1' }], 'onEvent was re-attached to the new port');
+  r.disconnect();      // worker restart #2 (the new port's disconnect listeners)
+  assert.equal(disconnects, 2, 'onDisconnect was re-attached to the new port');
+});
+
+test('US-1741 a post that still throws rejects typed — never Chrome\'s internal string', async () => {
+  const r = rig();
+  r.disconnect();
+  r.killNextPorts(2); // the reconnect AND its retry land on dead ports
+  const err = await r.client.call('revoke_all').then(() => null, (e) => e);
+  assert.equal(err.code, 'transport-lost');
+  assert.equal(err.name, 'TransportError');
+  assert.equal(err.message, 'the connection to the extension was lost — try again');
+  assert.notEqual(err.message, 'Attempting to use a disconnected port object');
+});
+
+test('US-1741 a runtime.connect failure after the restart rejects typed', async () => {
+  const r = rig();
+  r.disconnect();
+  r.setConnectThrows(); // the extension context itself is gone
+  const err = await r.client.call('get_grants').then(() => null, (e) => e);
+  assert.equal(err.code, 'transport-lost');
+  assert.equal(err.name, 'TransportError');
 });

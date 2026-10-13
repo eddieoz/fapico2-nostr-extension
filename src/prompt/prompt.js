@@ -124,7 +124,11 @@ $('approve').addEventListener('click', () => {
     })
     // US-1724 — approval resolves the consent; the window STAYS OPEN through
     // the device touch (D-UX6). The worker closes it after the outcome beat.
-    .then(showTouch)
+    // US-1741 — a healed port can carry the decision to a RESTARTED worker,
+    // whose in-memory record is gone: decide() answers {delivered: false}.
+    // That fails loud (the lost-connection notice) — the touch bar never
+    // shows for a decision nobody holds.
+    .then((res) => (res?.delivered === false ? showLostConnection() : showTouch()))
     .catch(showLostConnection);
 });
 
