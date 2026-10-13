@@ -5,6 +5,7 @@
 // the single serialization point for the port boundary.
 
 import { DeviceAbsentError } from '../core/loudness.js';
+import { errSentence } from './error-map.js';
 
 /** A request the dispatch refuses before any handler runs. */
 export class UnsupportedMethodError extends Error {
@@ -59,7 +60,9 @@ export function serializeError(err) {
     }
     return {
       name: err.name,
-      message: String(err.message ?? err),
+      // US-1734 board run — a status-word error crosses the port with its
+      // typed sentence, never the raw word; the sw rides for machines.
+      message: errSentence(err) || String(err.message ?? err),
       code: err.code ?? err.name,
       sw: err.sw,
       device: err.device,

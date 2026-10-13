@@ -26,6 +26,36 @@
     [SignerKinds.SOFTWARE]: SignerKinds.SOFTWARE
   };
 
+  // src/worker/error-map.js
+  var SW_ERROR_MAP = {
+    36864: { code: "OK", message: "ok" },
+    27264: { code: "SW_WRONG_DATA", message: "the device refused the data \u2014 it could not read the request" },
+    27266: { code: "SW_FILE_NOT_FOUND", message: "that identity is not on the device" },
+    27268: { code: "SW_FILE_FULL", message: "that slot is occupied \u2014 delete it first" },
+    27270: { code: "SW_INCORRECT_PARAMS", message: "the device refused the parameters" },
+    27271: { code: "SW_LC_INCONSISTENT", message: "the device refused the command length" },
+    27272: { code: "SW_REFERENCED_DATA_NOT_FOUND", message: "nothing there to operate on" },
+    27392: { code: "SW_INCORRECT_P1P2", message: "the device refused the command parameters" },
+    // The touch word: the consent window closed without a press (15 s), or a
+    // second vendor request arrived while a window was parked (the queue
+    // exists so the client never provokes that one).
+    27013: { code: "SW_TOUCH_REQUIRED", message: "touch timed out \u2014 the device asked for a touch and none came" },
+    27904: { code: "SW_INS_NOT_SUPPORTED", message: "the device does not serve that command" },
+    28416: { code: "SW_STORE_FAULT", message: "the device could not complete the operation \u2014 its store faulted" }
+  };
+  function describeSw(sw) {
+    const known = SW_ERROR_MAP[sw];
+    if (known) return { ...known, known: true };
+    return {
+      code: "device-error",
+      message: `the device answered 0x${sw.toString(16).padStart(4, "0")} \u2014 no known sentence for it`,
+      known: false
+    };
+  }
+  function errSentence(err) {
+    return err && err.sw !== void 0 ? describeSw(err.sw).message : err?.message ?? "";
+  }
+
   // src/worker/errors.js
   var QueueFullError = class extends Error {
     constructor(depth) {
@@ -55,7 +85,9 @@
       }
       return {
         name: err.name,
-        message: String(err.message ?? err),
+        // US-1734 board run — a status-word error crosses the port with its
+        // typed sentence, never the raw word; the sw rides for machines.
+        message: errSentence(err) || String(err.message ?? err),
         code: err.code ?? err.name,
         sw: err.sw,
         device: err.device
@@ -7438,7 +7470,7 @@
         notifySettle?.("ok");
         return result;
       } catch (err) {
-        notifySettle?.("err", err?.message ?? "");
+        notifySettle?.("err", errSentence(err));
         throw err;
       }
     };

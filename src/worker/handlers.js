@@ -11,6 +11,7 @@
 import { FapicoSigner, FapicoNip44, SwError, SignerError } from '../core/seams.js';
 import { NOSTR_CMD, SW } from '../core/ctaphid.js';
 import { DeviceAbsentError } from '../core/loudness.js';
+import { errSentence } from './error-map.js';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
 
 export function createHandlers({
@@ -77,7 +78,9 @@ export function createHandlers({
     } catch (err) {
       // US-1725 — a typed device error (SwError, absence, queue-full): report
       // the sentence to the window, then let it propagate to the dispatch.
-      notifySettle?.('err', err?.message ?? '');
+      // US-1734 board run — the sentence is the error-map's, never the raw
+      // SwError word ("SIGN refused with 0x6985").
+      notifySettle?.('err', errSentence(err));
       throw err;
     }
   };

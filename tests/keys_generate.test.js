@@ -54,7 +54,8 @@ test('US-1704 an occupied slot (6A84) renders its own named message', async () =
   );
   assert.equal(err.sw, 0x6a84);
   assert.equal(SW_WORDS[0x6a84], 'that slot is occupied — delete it first');
-  assert.match(serializeError(err).message, /0x6a84|refused/);
+  // US-1734 board run — the typed sentence crosses the port, not the raw word.
+  assert.equal(serializeError(err).message, 'that slot is occupied — delete it first');
 });
 
 test('US-1704 a full store (6A88) renders its own named message', async () => {

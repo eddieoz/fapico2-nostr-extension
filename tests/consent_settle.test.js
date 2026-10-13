@@ -37,7 +37,7 @@ test('US-1725 a prompt-window approval reports the device outcome "ok" once', as
   assert.deepEqual(settles, [{ outcome: 'ok', message: undefined }]);
 });
 
-test('US-1725 a prompt-window typed error reports the sentence once and still propagates', async () => {
+test('US-1734 a status-word error settles the TYPED sentence, never the raw word (board-run finding)', async () => {
   const settles = [];
   const handlers = createHandlers({
     device: device(0x6985, new Uint8Array(0)),
@@ -48,8 +48,11 @@ test('US-1725 a prompt-window typed error reports the sentence once and still pr
     () => handlers.get_public_key([], { trusted: false, requestId: 'r1', sender: {} }),
     (err) => {
       assert.equal(err.name, 'SwError');
-      // The sentence that rides the settle push is the typed error's message.
-      assert.deepEqual(settles, [{ outcome: 'err', message: err.message }]);
+      // US-1734 board run: the raw SwError word ("GET_PUBKEY refused with
+      // 0x6985") reached the prompt window verbatim. The settle must carry
+      // the error-map sentence — the same words every surface shows.
+      assert.deepEqual(settles, [{ outcome: 'err', message: 'touch timed out — the device asked for a touch and none came' }]);
+      assert.notEqual(settles[0].message, err.message, 'the raw word never crosses');
       return true;
     },
   );
@@ -104,4 +107,17 @@ test('US-1725 a settle failure in the integration path does not corrupt the devi
   const res = await handlers.get_public_key([], { trusted: false, requestId: 'r1', sender: {} });
   assert.equal(typeof res, 'string');
   assert.equal(res.length, 64); // hex of 32 bytes — the device result stands
+});
+
+// US-1734 board run — the port boundary too: a SwError serialized across a
+// port carries the typed sentence, not "CMD refused with 0x6985" (the web
+// app's NIP-07 rejection showed the raw word on hardware).
+test('US-1734 a SwError crossing the port boundary is serialized with its typed sentence', async () => {
+  const { serializeError } = await import('../src/worker/errors.js');
+  const { SwError } = await import('../src/core/seams.js');
+  const err = new SwError('SIGN', 0x6985);
+  const wire = serializeError(err);
+  assert.equal(wire.message, 'touch timed out — the device asked for a touch and none came');
+  assert.equal(wire.sw, 0x6985, 'the status word still rides for machines');
+  assert.equal(wire.name, 'SwError');
 });

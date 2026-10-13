@@ -31,3 +31,12 @@ export function describeSw(sw) {
     known: false,
   };
 }
+
+/** US-1734 board run — the sentence an error carries wherever the worker
+ *  speaks to a page (the settle push, the port boundary). A status-word
+ *  error renders its typed sentence; on hardware the prompt window showed
+ *  the raw word ("SIGN refused with 0x6985") where this sentence belongs.
+ *  Errors without a status word keep their own message. */
+export function errSentence(err) {
+  return err && err.sw !== undefined ? describeSw(err.sw).message : (err?.message ?? '');
+}
