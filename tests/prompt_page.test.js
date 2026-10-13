@@ -12,6 +12,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { requestRender } from '../src/prompt/request-render.js';
 import { rememberCopy } from '../src/prompt/remember-copy.js';
+import { settleBeat, successBeat, TOUCH_TEXT, LOST_CONNECTION_TEXT } from '../src/prompt/touch-state.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFile(join(root, p), 'utf8');
@@ -115,4 +116,89 @@ test('US-1720 the checkbox still gates only `remember` — the decision payload 
   const reads = js.match(/\$\('remember'\)\.checked/g) ?? [];
   assert.equal(reads.length, 1, 'the checkbox value feeds exactly one field');
   assert.ok(/remember:\s*\$\('remember'\)\.checked/.test(js), 'and that field is `remember`');
+});
+
+// US-1724 — the outcome beat is pure text (success confirmation, or the typed
+// error sentence VERBATIM); the page is a thin driver over it.
+test('US-1724 the success beat is a short, method-aware confirmation', () => {
+  assert.equal(settleBeat('sign_event', { outcome: 'ok' }).text, 'signed.');
+  assert.equal(settleBeat('sign_event', { outcome: 'ok' }).err, false);
+  assert.equal(successBeat('get_public_key'), 'shown.');
+});
+
+test('US-1724 the error beat renders the typed sentence verbatim — never generic', () => {
+  const sentence = 'the device was not touched (6985)';
+  const beat = settleBeat('sign_event', { outcome: 'err', message: sentence });
+  assert.equal(beat.text, sentence, 'the typed message rides the settle push unchanged');
+  assert.equal(beat.err, true);
+  assert.ok(!/generic|failed|an error|something went wrong/i.test(beat.text.toLowerCase()), 'no generic wording replaces it');
+});
+
+test('US-1724 the touch bar and lost-connection copy are the shared language', () => {
+  assert.equal(TOUCH_TEXT, 'touch your fapico2 board');
+  assert.equal(LOST_CONNECTION_TEXT, 'connection to the extension was lost — check the site');
+});
+
+// US-1724 — Approve flips to the touch state and the window STAYS OPEN through
+// the device touch (D-UX6); it no longer closes on approve. Deny still closes
+// instantly. Both handlers are extracted by their `addEventListener('click', …)`
+// body so the approve/deny assertions can't cross each other.
+function handler(js, which) {
+  const m = js.match(new RegExp(`\\$\\('${which}'\\)\\.addEventListener\\('click',\\s*\\(\\)\\s*=>\\s*\\{([\\s\\S]*?)\\}\\);`));
+  return m ? m[1] : '';
+}
+
+test('US-1724 Approve resolves then flips to the touch state — no immediate close (D-UX6)', async () => {
+  const js = await read('src/prompt/prompt.js');
+  const body = handler(js, 'approve');
+  assert.ok(body, 'the approve handler exists');
+  assert.ok(/showTouch|touch-bar/.test(body), 'approve flips to the touch state');
+  assert.ok(!/window\.close\(\)/.test(body), 'approve does NOT close the window immediately');
+});
+
+test('US-1724 Deny keeps its instant close', async () => {
+  const js = await read('src/prompt/prompt.js');
+  const body = handler(js, 'deny');
+  assert.ok(body, 'the deny handler exists');
+  assert.ok(/window\.close\(\)/.test(body), 'deny still closes instantly');
+});
+
+// US-1724 — the page subscribes to the worker's push (prompt-settled) and to
+// disconnect, and drives the outcome beat from the settle frame.
+test('US-1724 the page consumes prompt-settled and disconnect, and drives the outcome beat from the frame', async () => {
+  const js = await read('src/prompt/prompt.js');
+  assert.ok(/api\.onEvent\(\(frame\)\s*=>/.test(js), 'subscribes to worker push frames');
+  assert.ok(/prompt-settled/.test(js), 'handles the prompt-settled frame');
+  assert.ok(/showOutcome\(\s*settleBeat\(/.test(js), 'the settle frame drives the outcome beat');
+  assert.ok(/api\.onDisconnect\(\(\)\s*=>/.test(js), 'subscribes to disconnect');
+  assert.ok(/LOST_CONNECTION_TEXT|connection to the extension was lost/.test(js), 'shows the lost-connection notice');
+});
+
+// US-1724 — the DOM carries the touch-bar and outcome hooks.
+test('US-1724 prompt.html carries the touch-bar and outcome hooks', async () => {
+  const html = await read('src/prompt/prompt.html');
+  assert.ok(/id="touch-bar"/.test(html), 'the touch-bar hook exists');
+  assert.ok(/id="touch-text"/.test(html), 'the touch-bar text hook exists');
+  assert.ok(/id="outcome"/.test(html), 'the outcome beat hook exists');
+  assert.ok(/id="actions"/.test(html), 'the actions wrapper is hookable');
+  assert.ok(/touch your fapico2 board/.test(html), 'the touch bar language matches the popup');
+});
+
+// US-1724 — the touch bar (amber, pulsing) and outcome beat are styled; the
+// pulse is the shared primitive, not redefined per page.
+test('US-1724 prompt.css styles the touch bar and outcome beat', async () => {
+  const css = stripComments(await read('src/prompt/prompt.css'));
+  assert.ok(/\.touch-bar\s*\{/.test(css), 'the touch-bar rule exists');
+  assert.ok(/\.touch-bar\.on\s*\{[^}]*animation:\s*pulse/.test(css), 'the active touch bar pulses the shared keyframe');
+  assert.ok(/\.outcome\s*\{/.test(css), 'the outcome beat rule exists');
+  assert.ok(/\.outcome\.err\s*\{/.test(css), 'the error outcome is styled loud');
+  const errRule = block(css, '.outcome.err');
+  assert.ok(errRule && errRule.includes('var(--err)'), 'the error outcome uses --err');
+});
+
+test('US-1724 the pulse primitive is shared (tokens.css), not duplicated per page', async () => {
+  const tokens = await read('src/popup/tokens.css');
+  assert.ok(/@keyframes\s+pulse/.test(tokens), 'tokens.css defines the shared pulse');
+  const popupCss = stripComments(await read('src/popup/popup.css'));
+  assert.ok(!/keyframes\s+pulse/.test(popupCss), 'popup.css no longer defines its own pulse');
 });

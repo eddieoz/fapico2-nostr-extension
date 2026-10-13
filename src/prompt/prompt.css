@@ -117,3 +117,48 @@ button.deny { color: var(--err); border-color: var(--err); background: transpare
 /* an omitted identity keeps its line in flow — never display:none — so the
    actions row never jumps when the line lands (US-1719) */
 .request-identity[hidden] { display: block; }
+
+/* US-1724 — the touch state: the same amber touch bar as the popup (shared
+   tokens + the shared pulse primitive), fuller language for the prompt's room.
+   Hidden until Approve, then pulsing until the device op settles. */
+.touch-bar {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--amber);
+  border-radius: var(--r);
+  background: linear-gradient(90deg, rgba(255, 179, 64, 0.12), rgba(255, 179, 64, 0.02));
+  color: var(--amber);
+  font: 600 12px/1.4 var(--mono);
+  padding: 10px 12px;
+  margin-top: 14px;
+}
+.touch-bar.on {
+  display: flex;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+.touch-bar .led {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--amber);
+  flex: none;
+}
+
+/* US-1724 — the outcome beat. A confirmation (success) or the typed error
+   sentence rendered verbatim, loud — never a generic "failed". */
+.outcome {
+  display: none;
+  border-radius: 4px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-inset);
+  color: var(--ink);
+  font: 12px/1.5 var(--mono);
+  padding: 10px 12px;
+  margin-top: 14px;
+  word-break: break-word;
+}
+.outcome.err {
+  border-color: var(--err);
+  color: var(--err);
+}

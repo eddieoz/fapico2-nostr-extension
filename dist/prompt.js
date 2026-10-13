@@ -400,6 +400,32 @@
     return `Remember this choice for ${site} \u2014 for this action only; the device touch is still required every time.`;
   }
 
+  // src/prompt/touch-state.js
+  var TOUCH_TEXT = "touch your fapico2 board";
+  var LOST_CONNECTION_TEXT = "connection to the extension was lost \u2014 check the site";
+  function successBeat(method2) {
+    switch (String(method2 ?? "").toLowerCase()) {
+      case "sign_event":
+        return "signed.";
+      case "get_public_key":
+        return "shown.";
+      case "nip44_encrypt":
+        return "encrypted.";
+      case "nip44_decrypt":
+        return "decrypted.";
+      case "list_keys":
+        return "listed.";
+      default:
+        return "done.";
+    }
+  }
+  function settleBeat(method2, { outcome: outcome2, message } = {}) {
+    if (outcome2 === "err") {
+      return { text: String(message ?? ""), err: true };
+    }
+    return { text: successBeat(method2), err: false };
+  }
+
   // src/prompt/prompt.js
   var $ = (id) => document.getElementById(id);
   var params = new URLSearchParams(location.search);
@@ -433,12 +459,49 @@
       }
     })();
   }
+  var touchBar = $("touch-bar");
+  var outcome = $("outcome");
+  var done = false;
+  var once = (fn) => (...args) => {
+    if (done) return;
+    done = true;
+    fn(...args);
+  };
+  var showOutcome = once((beat) => {
+    touchBar.hidden = true;
+    touchBar.classList.remove("on");
+    outcome.hidden = false;
+    outcome.textContent = beat.text;
+    outcome.className = `outcome${beat.err ? " err" : ""}`;
+  });
+  var showLostConnection = once(() => {
+    touchBar.hidden = true;
+    touchBar.classList.remove("on");
+    outcome.hidden = false;
+    outcome.textContent = LOST_CONNECTION_TEXT;
+    outcome.className = "outcome err";
+  });
+  function showTouch() {
+    touchBar.hidden = false;
+    touchBar.classList.add("on");
+    $("touch-text").textContent = TOUCH_TEXT;
+    $("actions").hidden = true;
+  }
+  api.onEvent((frame) => {
+    if (frame.event !== "prompt-settled") return;
+    showOutcome(settleBeat(method, frame));
+    setTimeout(() => window.close(), 800);
+  });
+  api.onDisconnect(() => {
+    if (done) return;
+    showLostConnection();
+  });
   $("approve").addEventListener("click", () => {
     api.call("prompt_decision", {
       requestId,
       approve: true,
       remember: $("remember").checked
-    }).finally(() => window.close());
+    }).then(showTouch).catch(showLostConnection);
   });
   $("deny").addEventListener("click", () => {
     api.call("prompt_decision", { requestId, approve: false }).finally(() => window.close());

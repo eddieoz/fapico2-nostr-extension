@@ -9,6 +9,7 @@ import { createPortClient } from '../shared/port-client.js';
 import { identityLine } from './identity.js';
 import { requestRender } from './request-render.js';
 import { rememberCopy } from './remember-copy.js';
+import { TOUCH_TEXT, LOST_CONNECTION_TEXT, settleBeat } from './touch-state.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -60,6 +61,58 @@ if (method !== 'list_keys') {
   })();
 }
 
+// US-1724 — the post-approve states. After Approve the page flips to the touch
+// state (the amber bar); the worker owns the outcome beat and the close. On the
+// prompt-settled push it shows the outcome (success beat, or the typed error
+// sentence verbatim) and lets the window close; on disconnect it shows the
+// lost-connection notice. A terminal state is shown once — a late disconnect
+// after a settle, or a second frame, is ignored.
+const touchBar = $('touch-bar');
+const outcome = $('outcome');
+let done = false;
+const once = (fn) => (...args) => {
+  if (done) return;
+  done = true;
+  fn(...args);
+};
+
+const showOutcome = once((beat) => {
+  touchBar.hidden = true;
+  touchBar.classList.remove('on');
+  outcome.hidden = false;
+  outcome.textContent = beat.text;
+  outcome.className = `outcome${beat.err ? ' err' : ''}`;
+});
+
+const showLostConnection = once(() => {
+  touchBar.hidden = true;
+  touchBar.classList.remove('on');
+  outcome.hidden = false;
+  outcome.textContent = LOST_CONNECTION_TEXT;
+  outcome.className = 'outcome err';
+});
+
+function showTouch() {
+  touchBar.hidden = false;
+  touchBar.classList.add('on');
+  $('touch-text').textContent = TOUCH_TEXT;
+  $('actions').hidden = true;
+}
+
+// US-1723 — the worker pushes the outcome frame to this request's port.
+api.onEvent((frame) => {
+  if (frame.event !== 'prompt-settled') return;
+  showOutcome(settleBeat(method, frame));
+  // The worker closes the window after a beat (US-1723); this is the page's own
+  // guarantee that the beat stays visible even if that remove never lands.
+  setTimeout(() => window.close(), 800);
+});
+
+api.onDisconnect(() => {
+  if (done) return; // a settle already reached us — nothing to recover
+  showLostConnection();
+});
+
 $('approve').addEventListener('click', () => {
   api
     .call('prompt_decision', {
@@ -67,7 +120,10 @@ $('approve').addEventListener('click', () => {
       approve: true,
       remember: $('remember').checked,
     })
-    .finally(() => window.close());
+    // US-1724 — approval resolves the consent; the window STAYS OPEN through
+    // the device touch (D-UX6). The worker closes it after the outcome beat.
+    .then(showTouch)
+    .catch(showLostConnection);
 });
 
 $('deny').addEventListener('click', () => {
