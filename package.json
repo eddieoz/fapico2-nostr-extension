@@ -4,6 +4,7 @@
   "description": "Nostr-only, hardware-first browser extension: keys live on the fapico2 board, consent is a physical touch",
   "type": "module",
   "private": true,
+  "packageManager": "pnpm@10.8.0",
   "scripts": {
     "build": "node build.mjs",
     "test": "pnpm run build && node --test --test-concurrency=8 tests/*.test.js tests/smoke/*.test.js",
