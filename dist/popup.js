@@ -7058,6 +7058,22 @@
     return probe({ force: true });
   }
 
+  // src/shared/method-words.js
+  var METHOD_WORDS = {
+    get_public_key: "reads your public key",
+    sign_event: "signs events",
+    list_keys: "lists your identities",
+    nip44_encrypt: "encrypts for a peer",
+    nip44_decrypt: "decrypts from a peer"
+  };
+  function methodWord(method) {
+    return METHOD_WORDS[method] ?? method;
+  }
+  function methodWords(methods) {
+    const list = Array.isArray(methods) ? methods : [methods];
+    return list.map(methodWord).join(", ");
+  }
+
   // src/popup/popup.js
   var api = createPortClient();
   var $ = (id) => document.getElementById(id);
@@ -7486,7 +7502,7 @@
       <div class="key-row">
         <span class="key-npub">
           <span class="bech">${escapeHtml(g.host)}</span><br>
-          <span class="hex">${g.methods.join(", ")} \u2014 ${new Date(g.grantedAt).toISOString().slice(0, 10)}</span>
+          <span class="hex">${methodWords(g.methods)} \u2014 ${new Date(g.grantedAt).toISOString().slice(0, 10)}</span>
         </span>
         <span class="key-actions"><button data-revoke="${escapeHtml(g.host)}">revoke</button></span>
       </div>`

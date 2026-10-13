@@ -5,10 +5,16 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { createPermissionStore } from '../src/worker/permissions.js';
 import { createPromptFlow } from '../src/worker/prompt.js';
 import { createConsentGate } from '../src/worker/consent.js';
+
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const readPopup = () => readFile(join(root, 'src/popup/popup.js'), 'utf8');
 
 function fakeStorage() {
   const data = new Map();
@@ -115,4 +121,23 @@ test('US-1701 revoke-all clears every site at once', async () => {
   await permissions.grant('b.example', ['get_public_key']);
   await permissions.revoke(null);
   assert.deepEqual(await permissions.list(), []);
+});
+
+// US-1731 — the Sites screen reads grants in the shared vocabulary, not the
+// raw method identifiers. No jsdom here, so the assertion parses popup.js as
+// text: the render path imports the shared module and maps g.methods through
+// it, and the old raw `g.methods.join` is gone.
+
+test('US-1731 the Sites screen renders grant methods in shared plain words, not identifiers', async () => {
+  const src = await readPopup();
+  // imports the shared vocabulary module at all
+  assert.match(src, /method[- ]?words|METHOD_WORDS/, 'popup consumes the shared vocabulary');
+  // loadSites maps the grant's methods through the formatter, not the raw id
+  const loadSites = src.slice(src.indexOf('async function loadSites'));
+  assert.match(loadSites, /methodWords\(\s*g\.methods\s*\)/,
+    'loadSites renders methodWords(g.methods)');
+  // the raw snake_case id is no longer dropped straight into the DOM
+  const body = loadSites.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(body, /g\.methods\.join\(\s*[',']\s*\)/,
+    'no raw g.methods.join in the render');
 });

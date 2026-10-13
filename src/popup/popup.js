@@ -23,6 +23,7 @@ import {
   SLOTS,
 } from './keys.js';
 import { homeScreenFor, homeActions, deviceCardModel, tryAgain } from './home-state.js';
+import { methodWords } from '../shared/method-words.js';
 
 const api = createPortClient();
 const $ = (id) => document.getElementById(id);
@@ -551,7 +552,7 @@ async function loadSites() {
       <div class="key-row">
         <span class="key-npub">
           <span class="bech">${escapeHtml(g.host)}</span><br>
-          <span class="hex">${g.methods.join(', ')} — ${new Date(g.grantedAt).toISOString().slice(0, 10)}</span>
+          <span class="hex">${methodWords(g.methods)} — ${new Date(g.grantedAt).toISOString().slice(0, 10)}</span>
         </span>
         <span class="key-actions"><button data-revoke="${escapeHtml(g.host)}">revoke</button></span>
       </div>`,
