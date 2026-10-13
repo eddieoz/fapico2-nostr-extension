@@ -160,11 +160,16 @@ export function createDeviceOwner({
       };
     },
 
-    /** The transport is gone (device unplugged): the next request reopens. */
+    /** The transport is gone (device unplugged) or a re-pair is adopting a
+     *  fresh grant (US-1742 board run: the stale WebHID handle stayed open
+     *  and the re-pair's open() hit Chrome's "device is already open") —
+     *  the handle is closed, the next request reopens cleanly. */
     forget() {
       transport = null;
+      const stale = device;
       device = null;
       opening = null;
+      stale?.close?.()?.catch?.(() => {});
     },
   };
 }

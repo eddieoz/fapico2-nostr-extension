@@ -138,3 +138,38 @@ test('US-1694 the vendor filter is the 0xFF00:0x01 interface, not the FIDO one',
   });
   await assert.rejects(() => owner.run(0x40, 0, new Uint8Array(0)), DeviceAbsentError);
 });
+
+// US-1742 — the board run: pair_device → forget() dropped the owner's
+// transport but left the WebHID handle OPEN; the re-pair's open() hit the
+// same handle and Chrome answered "device is already open". forget() must
+// release the handle so a re-pair re-opens cleanly.
+test('US-1742 forget releases the device handle — a re-pair never double-opens', async () => {
+  let opens = 0;
+  let closed = 0;
+  const dev = {
+    ...grantedDevice(),
+    opened: false,
+    open: async () => {
+      if (dev.opened) throw new Error('device is already open');
+      dev.opened = true;
+      opens += 1;
+    },
+    close: async () => {
+      dev.opened = false;
+      closed += 1;
+    },
+  };
+  const owner = createDeviceOwner({
+    getGrantedDevice: async () => dev,
+    createTransport: (d) => ({
+      open: async () => d.open(),
+      close: async () => d.close(),
+      vendor: async () => ({ sw: SW.OK, data: new Uint8Array(0) }),
+    }),
+  });
+  await owner.run(0x40, 0, new Uint8Array(0)); // opens the handle
+  owner.forget();                              // pair_device's re-adopt cycle
+  await owner.run(0x40, 0, new Uint8Array(0)); // the re-pair's probe
+  assert.equal(opens, 2, 'the second run re-opened the handle');
+  assert.equal(closed, 1, 'forget() closed the stale handle first');
+});
