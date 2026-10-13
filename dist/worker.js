@@ -7421,16 +7421,25 @@
       return v;
     };
     const pageMethod = (method, fn) => async (args, ctx) => {
+      let notifySettle;
       if (!ctx.trusted) {
-        await consent({
+        const result = await consent({
           method,
           args,
           sender: ctx.sender,
           requestId: ctx.requestId,
           preview: previewOf?.(method, args)
         });
+        notifySettle = result?.notifySettle;
       }
-      return fn(args, ctx);
+      try {
+        const result = await fn(args, ctx);
+        notifySettle?.("ok");
+        return result;
+      } catch (err) {
+        notifySettle?.("err", err?.message ?? "");
+        throw err;
+      }
     };
     const runOk = async (cmd, idx, arg) => {
       const { sw, data } = await device.run(cmd, idx, arg);
@@ -7799,6 +7808,19 @@
       return "unknown";
     }
   }
+  function makeSettleNotifier(prompt, requestId) {
+    let settled = false;
+    return (outcome, message) => {
+      if (settled || requestId == null) return;
+      settled = true;
+      try {
+        const p = prompt.settle(requestId, outcome, message);
+        if (p && typeof p.catch === "function") p.catch(() => {
+        });
+      } catch {
+      }
+    };
+  }
   function createConsentGate({
     permissions,
     prompt,
@@ -7841,7 +7863,13 @@
       }
       const outcome = { result: { consented: true } };
       if (pending && requestId != null) await pending.settle(requestId, outcome);
-      return { host, method, grant: "new", remember: decision.remember };
+      return {
+        host,
+        method,
+        grant: "new",
+        remember: decision.remember,
+        notifySettle: makeSettleNotifier(prompt, requestId)
+      };
     };
   }
 

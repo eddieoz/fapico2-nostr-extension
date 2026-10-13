@@ -17,6 +17,29 @@ export function hostFromSender(sender) {
 }
 
 /**
+ * US-1725 — the hook a consented request hands back to the handler so it can
+ * notify the prompt flow of the DEVICE outcome (`US-1723`'s `settle`) exactly
+ * once, after the physical touch. One record, one transition: the first call
+ * wins and every later call is a no-op. Fire-and-forget from the handler's
+ * view — a synchronous throw OR an async rejection from `prompt.settle` is
+ * swallowed and never corrupts the device op's own result. Inert when there is
+ * no requestId to settle.
+ */
+export function makeSettleNotifier(prompt, requestId) {
+  let settled = false;
+  return (outcome, message) => {
+    if (settled || requestId == null) return;
+    settled = true;
+    try {
+      const p = prompt.settle(requestId, outcome, message);
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    } catch {
+      /* fire-and-forget: the device op's result already stands */
+    }
+  };
+}
+
+/**
  * `permissions` is the US-1699 store; `prompt` the US-1700 flow. `hostOf`
  * is injectable for tests; production derives it from sender.url — the
  * page's own location.host (attached by the provider) is untrusted data and
@@ -74,6 +97,16 @@ export function createConsentGate({
     }
     const outcome = { result: { consented: true } };
     if (pending && requestId != null) await pending.settle(requestId, outcome);
-    return { host, method, grant: 'new', remember: decision.remember };
+    // US-1725 — the device hasn't been touched yet: hand the handler a hook so
+    // it can report the device outcome (US-1723's settle) exactly once after
+    // the touch. A persisted grant never opened a window, so it gets no hook
+    // and notifies nothing.
+    return {
+      host,
+      method,
+      grant: 'new',
+      remember: decision.remember,
+      notifySettle: makeSettleNotifier(prompt, requestId),
+    };
   };
 }

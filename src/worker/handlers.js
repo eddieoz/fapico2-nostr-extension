@@ -55,16 +55,31 @@ export function createHandlers({
   // The page-facing methods: consent first (per-host, per-method), then the
   // device. A trusted extension-page sender (the popup) skips the prompt.
   const pageMethod = (method, fn) => async (args, ctx) => {
+    // US-1725 — the consent gate returns a settle hook only when it opened a
+    // prompt window; a persisted grant returns none, so this is undefined and
+    // nothing is notified. The hook is called once, after the device op.
+    let notifySettle;
     if (!ctx.trusted) {
-      await consent({
+      const result = await consent({
         method,
         args,
         sender: ctx.sender,
         requestId: ctx.requestId,
         preview: previewOf?.(method, args),
       });
+      notifySettle = result?.notifySettle;
     }
-    return fn(args, ctx);
+    try {
+      const result = await fn(args, ctx);
+      // US-1725 — the consented device op completed: success. Fire-and-forget.
+      notifySettle?.('ok');
+      return result;
+    } catch (err) {
+      // US-1725 — a typed device error (SwError, absence, queue-full): report
+      // the sentence to the window, then let it propagate to the dispatch.
+      notifySettle?.('err', err?.message ?? '');
+      throw err;
+    }
   };
 
   /** Encode one applet command with a fixed-shape argument; run it through
