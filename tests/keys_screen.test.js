@@ -12,6 +12,8 @@ import { readFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { SLOTS } from '../src/popup/keys.js';
+
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFile(join(root, p), 'utf8');
 
@@ -171,5 +173,46 @@ test('US-1727 the primary rule is neutral-filled and the amber rule is separate'
   assert.ok(/var\(--disabled-bg\)|var\(--bg-inset\)/.test(primary), 'the neutral primary fills with the inset background');
   assert.ok(!/var\(--amber\)/.test(primary), 'the neutral primary is NOT amber');
   assert.match(amber, /var\(--amber\)/, 'the amber primary fills with --amber');
+});
+
+// --- US-1728: the slot grid — eight slots, one row, honest taken-state -------
+
+test('US-1728 there are eight slots', () => {
+  assert.equal(SLOTS, 8, 'the picker has eight slots');
+});
+
+test('US-1728 each slot renders one button carrying its slot as data-slot (DOM order = slot order)', () => {
+  assert.match(src, /Array\.from\(\{ length: SLOTS \}/, 'one button per slot');
+  assert.match(src, /data-slot="\$\{i\}"/, 'the button carries index i as data-slot — focus order reads slot order');
+  assert.match(src, /free \? 'free' : 'taken'/, 'a slot carries free or taken');
+});
+
+test('US-1728 the picker never shuffles focus order with tabindex', () => {
+  assert.ok(!/tabindex/.test(src), 'no tabindex on the pickers — Tab follows slot order');
+});
+
+test('US-1728 the eight slots stay on one row (never wrap)', () => {
+  const picker = block(css, '.slot-picker');
+  assert.ok(picker, 'a .slot-picker rule exists');
+  assert.match(picker, /flex-wrap:\s*nowrap/, 'slots are nowrap — all eight fit on one row');
+  const btn = block(css, '.slot-picker button');
+  assert.ok(btn, 'a .slot-picker button rule exists');
+  assert.match(btn, /flex:\s*1\s*1\s*0/, 'the slots share the width evenly (never drop to a second line)');
+});
+
+test('US-1728 a taken slot is unmistakable: filled + muted + inert, not only a line-through', () => {
+  const taken = block(css, '.slot-picker button.taken');
+  assert.ok(taken, 'a .slot-picker button.taken rule exists');
+  assert.match(taken, /background:\s*var\(--bg-inset\)/, 'taken is filled (a muted, dead fill)');
+  assert.match(taken, /color:\s*var\(--ink-dim\)/, 'taken is muted');
+  assert.match(taken, /cursor:\s*not-allowed/, 'taken is inert');
+  assert.match(taken, /text-decoration:\s*line-through/, 'taken keeps the line-through');
+});
+
+test('US-1728 a free slot reads open/clickable, distinct from taken', () => {
+  const free = block(css, '.slot-picker button.free');
+  assert.ok(free, 'a .slot-picker button.free rule exists');
+  assert.match(free, /background:\s*var\(--bg\)/, 'free is a lighter open fill');
+  assert.match(free, /cursor:\s*pointer/, 'free is clickable');
 });
 

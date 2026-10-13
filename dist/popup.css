@@ -211,13 +211,32 @@ input[type='text'], input[type='password'], textarea {
   color: var(--ink);
 }
 
-.slot-picker { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+/* US-1728 — eight slots on ONE row: never wrap, share the width evenly, so a
+   360px popup never drops slot 7 onto a second line. */
+.slot-picker { display: flex; gap: 6px; flex-wrap: nowrap; margin: 8px 0; }
 .slot-picker button {
-  min-width: 40px;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 7px 0;
   font: 700 12px/1 var(--mono);
+  text-align: center;
 }
-.slot-picker button.free { border-color: var(--line-strong); }
-.slot-picker button.taken { border-color: var(--line); color: var(--ink-dim); cursor: not-allowed; text-decoration: line-through; }
+/* free = open/clickable (lighter fill); taken = filled + muted/dead, an
+   unmistakable treatment, not only a line-through on a single digit; selected
+   = the amber pick. */
+.slot-picker button.free {
+  background: var(--bg);
+  border-color: var(--line-strong);
+  color: var(--ink);
+  cursor: pointer;
+}
+.slot-picker button.taken {
+  background: var(--bg-inset);
+  border-color: var(--line);
+  color: var(--ink-dim);
+  cursor: not-allowed;
+  text-decoration: line-through;
+}
 .slot-picker button.selected { background: var(--amber); border-color: var(--amber); color: #14171c; }
 
 /* --- touch bar: the one thing that glows ---------------------------------- */
