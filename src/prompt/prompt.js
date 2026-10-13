@@ -34,8 +34,8 @@ $('method-chip').textContent = render.chip;
 $('headline').textContent = render.headline;
 $('hint').textContent =
   method === 'get_public_key'
-    ? 'Your npub is public — but which sites may see it is still your call.'
-    : 'Nothing is signed, encrypted or decrypted until you approve.';
+    ? 'Your npub is public — which sites see it is your call.'
+    : 'Nothing happens until you approve.';
 
 // US-1710 — the identity line: which key will answer. Fetched at open —
 // the consent gate precedes the handler, so no device op is queued while

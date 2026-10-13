@@ -5,7 +5,13 @@
 // routes to connect-first (it is the probe window, not absence).
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { homeScreenFor, homeActions, deviceCardModel, tryAgain } from '../src/popup/home-state.js';
+
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const read = (p) => readFile(join(root, p), 'utf8');
 
 test('US-1715 a persisted connected card reopens on the normal keys home (fast path)', () => {
   assert.equal(homeScreenFor({ state: 'connected' }), 'keys');
@@ -85,4 +91,22 @@ test('US-1717 Try again re-issues exactly one forced probe', async () => {
   assert.equal(calls, 1);
   assert.deepEqual(seen, [{ force: true }]);
   assert.deepEqual(result, { state: 'connected' });
+});
+
+// US-1740 — the connect-first screen's disabled reason is VISIBLE text (the
+// US-1716 stated reason), not only a hover title an absent-board user never
+// sees; and with the board absent, the list_keys error notice is suppressed —
+// it would repeat the device card's line verbatim, twice, stacked.
+test('US-1740 renderHomeState renders the stated reason as visible text on the connect-first screen', async () => {
+  const src = await read('src/popup/popup.js');
+  const block = src.slice(src.indexOf('function renderHomeState'), src.indexOf('async function loadKeys'));
+  assert.match(block, /const reason = \$\('connect-reason'\)/, 'the reason paragraph is wired');
+  assert.match(block, /reason\.textContent = actions\.reason \?\? ''/, 'it renders the model\u2019s reason');
+  assert.match(block, /reason\.hidden = !actions\.reason/, 'and only when a reason exists');
+});
+
+test('US-1740 the absent board suppresses the redundant list_keys error notice', async () => {
+  const src = await read('src/popup/popup.js');
+  const block = src.slice(src.indexOf('async function loadKeys'), src.indexOf('function escapeHtml'));
+  assert.match(block, /if \(state\.deviceState !== 'absent'\)\s*\{\s*notice\(/, 'the err notice is gated on the device not being absent');
 });

@@ -288,3 +288,20 @@ test('US-1739 the first-run Generate/Import buttons open their screens', async (
   assert.match(src, /\$\('go-import-first'\)\.addEventListener\('click', openImport\)/,
     'Import opens the import flow (shared with the keys home)');
 });
+
+// US-1740 — the key row is a two-line card: the pick line (radio + title +
+// clipped npub) owns the full width, the actions line spreads beneath it. At
+// 360px the four buttons beside the bech32 squeezed the npub clip to a few
+// characters — the single-line layout is pinned gone.
+test('US-1740 the key row stacks: the pick owns the width, the actions spread under it', async () => {
+  const css = stripComments(await read('src/popup/popup.css'));
+  const row = block(css, '.key-row');
+  assert.ok(row, 'the key-row rule exists');
+  assert.match(row, /flex-wrap:\s*wrap/, 'the row may wrap to two lines');
+  const pick = css.match(/\.key-pick\s*\{([^}]*)\}/);
+  assert.ok(pick, 'the key-pick rule exists');
+  assert.match(pick[1], /flex:\s*1 1 100%/, 'the pick line owns the full width');
+  const actions = css.match(/\.key-actions\s*\{([^}]*)\}/);
+  assert.ok(actions, 'the key-actions rule exists');
+  assert.match(actions[1], /width:\s*100%/, 'the actions line spans the card');
+});

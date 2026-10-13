@@ -7197,6 +7197,11 @@
       btn.title = actions.reason ? `${word} a key \u2014 ${actions.reason}` : "";
       btn.setAttribute("aria-label", btn.title || word);
     }
+    const reason = $("connect-reason");
+    if (reason) {
+      reason.textContent = actions.reason ?? "";
+      reason.hidden = !actions.reason;
+    }
   }
   $("connect").addEventListener("click", async () => {
     if (!navigator.hid) {
@@ -7281,7 +7286,9 @@
     } catch (err) {
       list.innerHTML = "";
       renderActive();
-      notice(err.message ?? "could not list keys", "err");
+      if (state.deviceState !== "absent") {
+        notice(err.message ?? "could not list keys", "err");
+      }
     }
   }
   function escapeHtml(s) {

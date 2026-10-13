@@ -142,7 +142,9 @@ function renderHomeState() {
   show(homeScreenFor(state.lastHealth));
   // US-1716 — when the board is absent, Generate and Import are disabled with a
   // single stated reason; connected, they work. The connect-first screen owns
-  // these buttons, so this is the whole home-action state.
+  // these buttons, so this is the whole home-action state. US-1740 — the
+  // reason is visible text on the screen, not only a hover title an absent-
+  // board user never sees.
   const actions = homeActions(state.deviceState === 'connected');
   for (const id of ['go-generate-first', 'go-import-first']) {
     const btn = $(id);
@@ -151,6 +153,11 @@ function renderHomeState() {
     const word = id.includes('generate') ? 'Generate' : 'Import';
     btn.title = actions.reason ? `${word} a key — ${actions.reason}` : '';
     btn.setAttribute('aria-label', btn.title || word);
+  }
+  const reason = $('connect-reason');
+  if (reason) {
+    reason.textContent = actions.reason ?? '';
+    reason.hidden = !actions.reason;
   }
 }
 
@@ -267,7 +274,12 @@ async function loadKeys() {
   } catch (err) {
     list.innerHTML = '';
     renderActive();
-    notice(err.message ?? 'could not list keys', 'err');
+    // US-1740 — with the board absent, the connect-first home already states
+    // why no keys are listed; the red notice would repeat the card's line
+    // verbatim. Any other failure still reports loudly.
+    if (state.deviceState !== 'absent') {
+      notice(err.message ?? 'could not list keys', 'err');
+    }
   }
 }
 

@@ -78,6 +78,9 @@ main { padding: 12px 14px 14px; }
   align-items: center;
   gap: 6px;
 }
+/* US-1740 — the card's action words ("Try again") wrap to two lines when the
+   state line runs long; the words are single tokens, keep them on one line. */
+.card-actions button { white-space: nowrap; }
 
 .device-state { font: 12px/1.4 var(--mono); color: var(--ink-dim); }
 .device-state b { color: var(--ink); }
@@ -141,10 +144,15 @@ button.ghost { background: transparent; border-color: var(--line); color: var(--
 .occupancy .cells { letter-spacing: 2px; color: var(--amber-dim); }
 .occupancy .cells .used { color: var(--amber); }
 
+/* US-1740 — the key row is a two-line card: line 1 owns the radio + title +
+   clipped npub at full width (the 360px row can't fit four action buttons
+   beside the bech32 — the old single-line layout squeezed the npub clip down
+   to a few characters); line 2 spreads the actions. */
 .key-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px;
+  gap: 6px 8px;
   padding: 8px 2px;
   border-top: 1px solid var(--line);
 }
@@ -169,8 +177,24 @@ button.ghost { background: transparent; border-color: var(--line); color: var(--
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.key-actions { display: flex; gap: 4px; }
-.key-actions button { padding: 4px 7px; font-size: 12px; }
+.key-pick {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 1 1 100%;
+  min-width: 0;
+  cursor: pointer;
+}
+.key-pick input[type='radio'] { accent-color: var(--amber); flex: none; align-self: center; }
+.key-actions {
+  display: flex;
+  gap: 4px;
+  /* the actions line spreads across the card's full width, under the pick */
+  width: 100%;
+  padding-left: 26px; /* clears the radio, so the buttons align with the text */
+  box-sizing: border-box;
+}
+.key-actions button { padding: 4px 7px; font-size: 12px; flex: 1; }
 
 .empty {
   border: 1px dashed var(--line-strong);
@@ -341,12 +365,3 @@ code { font-family: var(--mono); color: var(--amber); font-size: 11px; }
   color: var(--ink-dim);
 }
 .active-strip.none { color: var(--amber); border-color: var(--amber); }
-.key-pick {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  flex: 1;
-  min-width: 0;
-  cursor: pointer;
-}
-.key-pick input[type='radio'] { accent-color: var(--amber); flex: none; align-self: center; }

@@ -439,7 +439,7 @@
   var render = requestRender(preview, method);
   $("method-chip").textContent = render.chip;
   $("headline").textContent = render.headline;
-  $("hint").textContent = method === "get_public_key" ? "Your npub is public \u2014 but which sites may see it is still your call." : "Nothing is signed, encrypted or decrypted until you approve.";
+  $("hint").textContent = method === "get_public_key" ? "Your npub is public \u2014 which sites see it is your call." : "Nothing happens until you approve.";
   var withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("slow")), ms))]);
   if (method !== "list_keys") {
     (async () => {
