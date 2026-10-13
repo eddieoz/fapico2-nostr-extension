@@ -24,6 +24,7 @@ import {
 } from './keys.js';
 import { homeScreenFor, homeActions, deviceCardModel, tryAgain } from './home-state.js';
 import { methodWords } from '../shared/method-words.js';
+import { createRevokeAllArmer } from './revoke-all.js';
 
 const api = createPortClient();
 const $ = (id) => document.getElementById(id);
@@ -562,14 +563,51 @@ async function loadSites() {
     notice(err.message ?? 'could not list grants', 'err');
   }
 }
+// US-1732 — per-host revoke stays one click but now reports what it did;
+// "Revoke all" is a two-step arm (never a blocking dialog). First click arms
+// and starts a countdown; a second click inside the window confirms, clicking
+// elsewhere or the timeout disarms.
+const revokeAll = createRevokeAllArmer();
+const revokeAllBtn = $('revoke-all');
+const REVOKE_ALL_ARM_MS = 5000;
+let revokeAllTimer = null;
+
+function armRevokeAll() {
+  revokeAll.arm();
+  revokeAllBtn.textContent = 'Confirm revoke all';
+  clearTimeout(revokeAllTimer);
+  revokeAllTimer = setTimeout(() => { revokeAll.disarm(); revokeAllBtn.textContent = 'Revoke all'; }, REVOKE_ALL_ARM_MS);
+}
+
+function disarmRevokeAll() {
+  revokeAll.disarm();
+  clearTimeout(revokeAllTimer);
+  revokeAllTimer = null;
+  revokeAllBtn.textContent = 'Revoke all';
+}
+
+// Clicking anywhere other than the armed button abandons the pending revoke-all.
+document.addEventListener('mousedown', (ev) => {
+  if (revokeAll.armed() && !revokeAllBtn.contains(ev.target)) {
+    disarmRevokeAll();
+  }
+});
+
 $('sites-list').addEventListener('click', async (ev) => {
   const btn = ev.target.closest('button[data-revoke]');
   if (!btn) return;
-  await api.call('revoke_grant', btn.dataset.revoke);
+  const host = btn.dataset.revoke;
+  await api.call('revoke_grant', host);
+  notice(`revoked ${host}`, 'ok');
   await loadSites();
 });
-$('revoke-all').addEventListener('click', async () => {
+
+revokeAllBtn.addEventListener('click', async () => {
+  if (!revokeAll.armed()) { armRevokeAll(); return; }
+  if (!revokeAll.confirm()) return;
   await api.call('revoke_all');
+  disarmRevokeAll();
+  notice('revoked all grants', 'ok');
   await loadSites();
 });
 

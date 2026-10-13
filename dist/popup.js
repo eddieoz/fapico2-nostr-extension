@@ -7074,6 +7074,30 @@
     return list.map(methodWord).join(", ");
   }
 
+  // src/popup/revoke-all.js
+  function createRevokeAllArmer({ now: now2 = Date.now, ms = 5e3 } = {}) {
+    let armedAt = 0;
+    function armed() {
+      return armedAt > 0;
+    }
+    function arm() {
+      if (armedAt > 0) return;
+      armedAt = now2();
+    }
+    function disarm() {
+      armedAt = 0;
+    }
+    function confirm() {
+      if (armedAt === 0 || now2() - armedAt > ms) {
+        disarm();
+        return false;
+      }
+      armedAt = 0;
+      return true;
+    }
+    return { armed, arm, disarm, confirm };
+  }
+
   // src/popup/popup.js
   var api = createPortClient();
   var $ = (id) => document.getElementById(id);
@@ -7511,14 +7535,47 @@
       notice(err.message ?? "could not list grants", "err");
     }
   }
+  var revokeAll = createRevokeAllArmer();
+  var revokeAllBtn = $("revoke-all");
+  var REVOKE_ALL_ARM_MS = 5e3;
+  var revokeAllTimer = null;
+  function armRevokeAll() {
+    revokeAll.arm();
+    revokeAllBtn.textContent = "Confirm revoke all";
+    clearTimeout(revokeAllTimer);
+    revokeAllTimer = setTimeout(() => {
+      revokeAll.disarm();
+      revokeAllBtn.textContent = "Revoke all";
+    }, REVOKE_ALL_ARM_MS);
+  }
+  function disarmRevokeAll() {
+    revokeAll.disarm();
+    clearTimeout(revokeAllTimer);
+    revokeAllTimer = null;
+    revokeAllBtn.textContent = "Revoke all";
+  }
+  document.addEventListener("mousedown", (ev) => {
+    if (revokeAll.armed() && !revokeAllBtn.contains(ev.target)) {
+      disarmRevokeAll();
+    }
+  });
   $("sites-list").addEventListener("click", async (ev) => {
     const btn = ev.target.closest("button[data-revoke]");
     if (!btn) return;
-    await api.call("revoke_grant", btn.dataset.revoke);
+    const host = btn.dataset.revoke;
+    await api.call("revoke_grant", host);
+    notice(`revoked ${host}`, "ok");
     await loadSites();
   });
-  $("revoke-all").addEventListener("click", async () => {
+  revokeAllBtn.addEventListener("click", async () => {
+    if (!revokeAll.armed()) {
+      armRevokeAll();
+      return;
+    }
+    if (!revokeAll.confirm()) return;
     await api.call("revoke_all");
+    disarmRevokeAll();
+    notice("revoked all grants", "ok");
     await loadSites();
   });
   $("nav-keys").addEventListener("click", () => {
