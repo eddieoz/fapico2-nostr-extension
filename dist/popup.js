@@ -1,23 +1,26 @@
 (() => {
   // src/shared/port-client.js
-  function createPortClient({ chrome_ = chrome, name = null } = {}) {
+  var STALE_MS = 2e4;
+  function createPortClient({ chrome_ = chrome, name = null, now: now2 = Date.now } = {}) {
     const portName = name ?? `nostr-page-${Math.floor(Math.random() * 1e9).toString(36)}`;
     let seq = 0;
     const pending = /* @__PURE__ */ new Map();
     const eventFns = /* @__PURE__ */ new Set();
     const disconnectFns = /* @__PURE__ */ new Set();
     let port = connect();
+    let lastSeen = now2();
     function connect() {
       const p = chrome_.runtime.connect({ name: portName });
       p.onMessage.addListener(handle);
       p.onDisconnect.addListener(() => {
-        port = null;
+        if (port === p) port = null;
         for (const fn of [...disconnectFns]) fn();
       });
       return p;
     }
     function handle(msg) {
       if (!msg) return;
+      lastSeen = now2();
       if (typeof msg.id !== "undefined") {
         const p = pending.get(msg.id);
         if (!p) return;
@@ -37,7 +40,9 @@
       for (const fn of [...eventFns]) fn(msg);
     }
     function send(frame) {
-      if (!port) port = connect();
+      if (!port || now2() - lastSeen > STALE_MS) {
+        port = connect();
+      }
       try {
         port.postMessage(frame);
       } catch {

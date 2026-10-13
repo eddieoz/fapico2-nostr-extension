@@ -39,7 +39,8 @@ function rig() {
       },
     },
   };
-  const client = createPortClient({ chrome_, name: 'nostr-test' });
+  const clock = { v: 1000000 };
+  const client = createPortClient({ chrome_, name: 'nostr-test', now: () => clock.v });
   const last = () => ports[ports.length - 1];
   return {
     client,
@@ -47,6 +48,7 @@ function rig() {
     last,
     setConnectThrows: () => { connectThrows = true; },
     killNextPorts: (n) => { killNextPorts = n; },
+    clock,
     // a frame the worker would postMessage to the page
     push(msg) { for (const fn of last().__listeners.message) fn(msg); },
     // a framed reply (has an id) the worker would postMessage to the page
@@ -181,4 +183,54 @@ test('US-1741 a runtime.connect failure after the restart rejects typed', async 
   const err = await r.client.call('get_grants').then(() => null, (e) => e);
   assert.equal(err.code, 'transport-lost');
   assert.equal(err.name, 'TransportError');
+});
+
+// US-1744 — the board run, take two: Chrome does NOT reliably deliver
+// port.onDisconnect when the MV3 worker is killed by idleness — the page's
+// port object stays "connected" and postMessage silently black-holes (the
+// monitor saw the worker start ZERO times while a connect attempt hung).
+// The client tracks its last inbound frame; a call after the staleness
+// window abandons the silent port and reconnects BEFORE sending.
+
+test('US-1744 a call after a silent window abandons the stale port and reconnects first', async () => {
+  const r = rig();
+  const p1 = r.ports[0];
+  const first = r.client.call('echo');
+  r.reply({ id: 'c0', result: { ok: true } }); // inbound activity: lastSeen = now
+  await first;
+  r.clock.v += 30000; // 30s of silence — the worker idled out
+  const promise = r.client.call('get_active_slot');
+  const p2 = r.last();
+  assert.ok(p2 !== p1, 'the stale port was abandoned, a fresh one connected');
+  assert.equal(p2.name, 'nostr-test', 'the fresh port rides the same name');
+  assert.deepEqual(p2.sent, [{ id: 'c1', method: 'get_active_slot', args: [] }]);
+  r.reply({ id: 'c1', result: { slot: 0 } });
+  assert.deepEqual(await promise, { slot: 0 });
+});
+
+test('US-1744 a call inside the staleness window reuses the live port', async () => {
+  const r = rig();
+  const p1 = r.ports[0];
+  const first = r.client.call('echo');
+  r.reply({ id: 'c0', result: { ok: true } });
+  await first;
+  r.clock.v += 5000; // 5s — inside the window
+  const promise = r.client.call('get_active_slot');
+  assert.equal(r.last(), p1, 'no reconnect while the port is fresh');
+  r.reply({ id: 'c1', result: { slot: 0 } });
+  assert.deepEqual(await promise, { slot: 0 });
+});
+
+test('US-1744 a late disconnect from an abandoned port does not null the fresh one', async () => {
+  const r = rig();
+  const first = r.client.call('echo');
+  r.reply({ id: 'c0', result: { ok: true } });
+  await first;
+  r.clock.v += 30000;
+  const promise = r.client.call('get_active_slot');
+  const p2 = r.last();
+  r.disconnect(); // the ABANDONED port's disconnect lands late
+  assert.equal(r.last(), p2, 'the fresh port survives the stale port\'s late disconnect');
+  r.reply({ id: 'c1', result: { slot: 0 } });
+  assert.deepEqual(await promise, { slot: 0 });
 });

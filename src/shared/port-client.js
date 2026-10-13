@@ -4,30 +4,39 @@
 // pages, both bound to the worker's method table.
 //
 // US-1741 board run — the MV3 worker idles out (~30 s) and the port dies
-// with it; a page whose human was mid-flow (the device chooser, a decision)
-// then posted into a dead port and Chrome's internal "Attempting to use a
-// disconnected port object" leaked into the UI. The client now heals the
-// same way the content bridge always has: a disconnected port is replaced
-// LAZILY on the next send, under the SAME name (re-delivery and the
-// prompt's request binding ride the name), with the listeners re-attached.
-// A send that still fails rejects typed TransportError — Chrome's internal
-// strings never reach a page.
+// with it. The client heals the way the content bridge always has: a
+// disconnected port is replaced lazily, under the SAME name (re-delivery and
+// the prompt's request binding ride the name), with the listeners
+// re-attached; a send that still fails rejects typed TransportError.
+//
+// US-1744 board run, take two — Chrome does NOT reliably deliver
+// port.onDisconnect when the worker is killed by idleness: the page's port
+// object stays "connected" and postMessage silently black-holes (a live
+// connect attempt hung while a CDP monitor saw the worker start ZERO times).
+// Healing therefore cannot depend on the disconnect event: the client tracks
+// its last inbound frame and a call after the staleness window abandons the
+// silent port and reconnects BEFORE sending. A late disconnect from an
+// abandoned port never touches the fresh one.
 
-export function createPortClient({ chrome_ = chrome, name = null } = {}) {
+const STALE_MS = 20000; // the worker's idle window is ~30 s
+
+export function createPortClient({ chrome_ = chrome, name = null, now = Date.now } = {}) {
   const portName = name ?? `nostr-page-${Math.floor(Math.random() * 1e9).toString(36)}`;
   let seq = 0;
   const pending = new Map();
   const eventFns = new Set();
   const disconnectFns = new Set();
   let port = connect();
+  let lastSeen = now();
 
   function connect() {
     const p = chrome_.runtime.connect({ name: portName });
     p.onMessage.addListener(handle);
     p.onDisconnect.addListener(() => {
-      // The worker restarted (or died): drop the dead port. The next send
-      // reconnects; pages subscribed to onDisconnect still hear about it.
-      port = null;
+      // The worker restarted (or died): drop the dead port — but only if it
+      // is still the current one (US-1744: an ABANDONED port's late
+      // disconnect must not null the fresh replacement).
+      if (port === p) port = null;
       for (const fn of [...disconnectFns]) fn();
     });
     return p;
@@ -35,6 +44,7 @@ export function createPortClient({ chrome_ = chrome, name = null } = {}) {
 
   function handle(msg) {
     if (!msg) return;
+    lastSeen = now(); // inbound traffic proves the port is alive
     // US-1721 — a frame WITH an id is a reply to a pending call (US-1692
     // routing, untouched). A frame WITHOUT an id is a worker push
     // ({event, ...}); it goes only to the onEvent listeners and never to a
@@ -59,12 +69,17 @@ export function createPortClient({ chrome_ = chrome, name = null } = {}) {
   }
 
   function send(frame) {
-    if (!port) port = connect(); // US-1741 — lazy reconnect under the same name
+    if (!port || now() - lastSeen > STALE_MS) {
+      // US-1741 — a dead port heals; US-1744 — a SILENT port (its disconnect
+      // event never fired) is abandoned on staleness. Both reconnect under
+      // the same name; the old port object is simply left behind.
+      port = connect();
+    }
     try {
       port.postMessage(frame);
     } catch {
-      // The port died between the disconnect event and this send: one
-      // reconnect + retry; a second failure propagates (call() types it).
+      // The port died between the check and this send: one reconnect +
+      // retry; a second failure propagates (call() types it).
       port = connect();
       port.postMessage(frame);
     }
