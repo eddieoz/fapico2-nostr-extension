@@ -154,3 +154,13 @@ test('US-1734 a dismissed chooser returns absent + cancelled and stays up to ret
   assert.equal(out.state, 'absent');
   assert.equal(out.cancelled, true);
 });
+
+// US-1739 — the connect page's notice announces like the popup's: the
+// US-1733 status-region treatment is uniform across pages, so a pairing
+// failure or the handoff line reaches an assistive tech user here too.
+test('US-1739 the connect notice announces politely — aria-live polite, atomic', async () => {
+  const html = await read('src/popup/connect.html');
+  const tag = html.match(/<div id="notice"[^>]*>/)[0];
+  assert.match(tag, /aria-live="polite"/, 'status changes announce politely');
+  assert.match(tag, /aria-atomic="true"/, 'the whole notice reads as one');
+});

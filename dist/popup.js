@@ -7408,12 +7408,15 @@
     $("import-confirm-btn").hidden = true;
     show("keys");
   });
-  $("go-import").addEventListener("click", () => {
+  function openImport() {
     $("import-confirm").hidden = true;
     $("import-next").hidden = false;
     $("import-confirm-btn").hidden = true;
     show("import");
-  });
+  }
+  $("go-import").addEventListener("click", openImport);
+  $("go-generate-first").addEventListener("click", () => openGenerate());
+  $("go-import-first").addEventListener("click", openImport);
   function openDelete(row) {
     state.deleteTarget = row;
     const m = deleteConfirmModel(row, state.activeSlot);

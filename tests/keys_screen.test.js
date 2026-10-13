@@ -276,3 +276,15 @@ test('US-1730 a rejected copy shows a typed notice containing no secret', () => 
   assert.match(noticeArg[1].trim(), /^['"`]/, 'the rejection notice is a typed literal — no secret interpolation');
 });
 
+
+// US-1739 — the connect-first screen's Generate/Import open the same flows
+// as the keys home. They render disabled while the board is absent
+// (US-1716), so the wiring is unreachable today — but the affordance is
+// never a dead one if a future state enables them.
+test('US-1739 the first-run Generate/Import buttons open their screens', async () => {
+  const src = await read('src/popup/popup.js');
+  assert.match(src, /\$\('go-generate-first'\)\.addEventListener\('click', \(\) => openGenerate\(\)\)/,
+    'Generate opens the generate flow');
+  assert.match(src, /\$\('go-import-first'\)\.addEventListener\('click', openImport\)/,
+    'Import opens the import flow (shared with the keys home)');
+});

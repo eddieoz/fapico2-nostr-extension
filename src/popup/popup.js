@@ -417,12 +417,19 @@ $('import-cancel').addEventListener('click', () => {
   $('import-confirm-btn').hidden = true;
   show('keys');
 });
-$('go-import').addEventListener('click', () => {
+function openImport() {
   $('import-confirm').hidden = true;
   $('import-next').hidden = false;
   $('import-confirm-btn').hidden = true;
   show('import');
-});
+}
+$('go-import').addEventListener('click', openImport);
+// US-1739 — the connect-first screen's actions open the same flows as the
+// keys home. They render disabled while the board is absent (US-1716), so
+// the wiring is unreachable today — but the affordance is never a dead one
+// if a future state enables them.
+$('go-generate-first').addEventListener('click', () => openGenerate());
+$('go-import-first').addEventListener('click', openImport);
 
 // --- delete (US-1706) ----------------------------------------------------------------
 
