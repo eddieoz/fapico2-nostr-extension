@@ -58,7 +58,7 @@
       <p class="muted">Pick an empty slot. Generation happens on the device and needs a touch. A generated key can only be removed with Delete — there is no undo.</p>
       <div class="slot-picker" id="gen-slots"></div>
       <div class="actions">
-        <button id="gen-confirm" class="primary" disabled>Generate &amp; touch</button>
+        <button id="gen-confirm" class="primary amber" disabled>Generate &amp; touch</button>
         <button id="gen-cancel" class="ghost">Back</button>
       </div>
     </section>
@@ -76,7 +76,7 @@
       </div>
       <div class="actions">
         <button id="import-next" class="primary">Check secret</button>
-        <button id="import-confirm-btn" class="primary" hidden>Import &amp; touch</button>
+        <button id="import-confirm-btn" class="primary amber" hidden>Import &amp; touch</button>
         <button id="import-cancel" class="ghost">Back</button>
       </div>
     </section>
@@ -101,7 +101,7 @@
       </label>
       <p class="muted" id="label-bytes"></p>
       <div class="actions">
-        <button id="label-confirm" class="primary">Set label &amp; touch</button>
+        <button id="label-confirm" class="primary amber">Set label &amp; touch</button>
         <button id="label-cancel" class="ghost">Back</button>
       </div>
     </section>
@@ -113,7 +113,7 @@
       <p class="muted"><b>Export shows the secret scalar once, in this window only.</b> It is never stored. Anyone who reads it owns the identity.</p>
       <label class="check"><input type="checkbox" id="export-understand"> I understand this reveals the secret.</label>
       <div class="actions">
-        <button id="export-confirm" class="danger" disabled>Reveal &amp; touch</button>
+        <button id="export-confirm" class="primary amber" disabled>Reveal &amp; touch</button>
         <button id="export-cancel" class="ghost">Back</button>
       </div>
       <div id="export-out" hidden><p class="reveal" id="export-scalar"></p><p class="muted">Erase this from view when done — the popup drops it on close.</p></div>

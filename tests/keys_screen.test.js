@@ -25,6 +25,17 @@ function block(css, re) {
 
 const css = stripComments(await read('src/popup/popup.css'));
 const src = await read('src/popup/popup.js');
+const html = await read('src/popup/popup.html');
+
+/** The whitespace-separated `class` attribute of the button with this id, or null. */
+function classes(id) {
+  const m = html.match(new RegExp(`<button[^>]*id="${id}"([^>]*)>`));
+  return m ? ((m[1].match(/class="([^"]*)"/) ?? [])[1] ?? '') : null;
+}
+function hasClass(id, cls) {
+  const c = classes(id);
+  return c != null && c.split(/\s+/).includes(cls);
+}
 
 /** The body of the single key-row template (between <div class="key-row"> and its close). */
 function rowBody() {
@@ -105,3 +116,60 @@ test('US-1726 the occupancy cells stay (nothing removed from the home)', () => {
   assert.match(src, /'occupancy'/, 'occupancy is still rendered');
   assert.match(rowBody(), /class="key-actions"/, 'the actions row is still part of the card');
 });
+
+// --- US-1727: amber semantics + a distinct disabled state --------------------
+
+test('US-1727 every touch-leading primary carries the amber class', () => {
+  for (const id of ['gen-confirm', 'import-confirm-btn', 'label-confirm', 'export-confirm']) {
+    assert.ok(hasClass(id, 'amber'), `${id} is a touch-leading primary and carries .amber`);
+  }
+});
+
+test('US-1727 Reveal & touch moved off danger onto amber', () => {
+  assert.ok(hasClass('export-confirm', 'amber'));
+  assert.ok(!hasClass('export-confirm', 'danger'), 'Reveal & touch is no longer danger');
+});
+
+test('US-1727 Delete & touch and Revoke all keep their danger styling', () => {
+  for (const id of ['delete-confirm', 'revoke-all']) {
+    assert.ok(hasClass(id, 'danger'), `${id} keeps .danger`);
+    assert.ok(!hasClass(id, 'amber'), `${id} is not amber`);
+  }
+});
+
+test('US-1727 non-touch primaries are neutral-filled (no amber)', () => {
+  for (const id of ['connect', 'import-next']) {
+    assert.ok(hasClass(id, 'primary'), `${id} is a primary`);
+    assert.ok(!hasClass(id, 'amber'), `${id} is a non-touch primary — neutral, not amber`);
+  }
+});
+
+test('US-1727 the disabled primitive lives in the token layer', async () => {
+  const tokens = stripComments(await read('src/popup/tokens.css'));
+  const root = tokens.match(/:root\s*\{([\s\S]*?)\}/);
+  assert.ok(root, 'tokens.css carries a :root block');
+  for (const v of ['--disabled-bg', '--disabled-border', '--disabled-color']) {
+    assert.match(root[1], new RegExp(`${v}\\s*:`), `${v} is declared in tokens.css :root`);
+  }
+});
+
+test('US-1727 disabled renders inert: inset bg, muted border+text, no amber, full opacity', async () => {
+  const disabled = block(css, 'button:disabled');
+  assert.ok(disabled, 'a button:disabled rule exists');
+  assert.match(disabled, /background:\s*var\(--disabled-bg\)/, 'inset (disabled) background');
+  assert.match(disabled, /border-color:\s*var\(--disabled-border\)/, 'muted (disabled) border');
+  assert.match(disabled, /color:\s*var\(--disabled-color\)/, 'muted (disabled) text');
+  assert.ok(!/opacity:\s*0/.test(disabled), 'no opacity-only hint — a disabled primary is not faded');
+  assert.ok(!/var\(--amber\)/.test(disabled), 'no amber when disabled');
+});
+
+test('US-1727 the primary rule is neutral-filled and the amber rule is separate', async () => {
+  const primary = block(css, 'button.primary');
+  const amber = block(css, 'button.amber');
+  assert.ok(primary, 'a button.primary rule exists');
+  assert.ok(amber, 'a button.amber rule exists');
+  assert.ok(/var\(--disabled-bg\)|var\(--bg-inset\)/.test(primary), 'the neutral primary fills with the inset background');
+  assert.ok(!/var\(--amber\)/.test(primary), 'the neutral primary is NOT amber');
+  assert.match(amber, /var\(--amber\)/, 'the amber primary fills with --amber');
+});
+

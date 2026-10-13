@@ -94,15 +94,40 @@ button {
   cursor: pointer;
 }
 button:hover { border-color: var(--amber-dim); }
+
+/* US-1727 — a primary is neutral-filled by default (Connect, Check secret).
+   The amber fill is a modifier (.amber) for the touch-leading primaries. */
 button.primary {
+  background: var(--bg-inset);
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+button.primary:hover { border-color: var(--amber-dim); }
+
+/* US-1727 — the touch-leading primary: amber fill (Generate & touch, Import &
+   touch, Set label & touch, Reveal & touch). */
+button.amber {
   background: var(--amber);
   border-color: var(--amber);
   color: #14171c;
 }
-button.primary:hover { filter: brightness(1.08); }
+button.amber:hover { filter: brightness(1.08); border-color: var(--amber); }
+
+/* US-1727 — danger is unchanged (Delete & touch, Revoke all). */
 button.danger { border-color: var(--err); color: var(--err); background: transparent; }
-button.danger:disabled { border-color: var(--line-strong); color: var(--ink-dim); cursor: not-allowed; }
-button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* US-1727 — disabled is visibly inert everywhere: inset fill, muted border,
+   muted text, full opacity. A disabled amber primary must not read as enabled
+   (the old opacity:0.55 left a faded amber that looked on). Specificity of
+   `button:disabled` beats `.danger`/`.ghost` so the inert look wins uniformly. */
+button:disabled {
+  background: var(--disabled-bg);
+  border-color: var(--disabled-border);
+  color: var(--disabled-color);
+  opacity: 1;
+  cursor: not-allowed;
+}
+
 button.ghost { background: transparent; border-color: var(--line); color: var(--ink-dim); }
 
 /* --- keys list -------------------------------------------------------------- */

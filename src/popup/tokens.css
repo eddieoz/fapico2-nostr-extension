@@ -21,6 +21,14 @@
   --mono: ui-monospace, 'JetBrains Mono', 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
   --sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
   --r: 8px;
+
+  /* US-1727 — the disabled primitive: an inert, non-amber look. A disabled
+     control renders with this inset fill, muted border and muted text at full
+     opacity, so a disabled amber primary never reads as enabled (the old
+     opacity:0.55 left a faded amber that still looked on). */
+  --disabled-bg: var(--bg-inset);
+  --disabled-border: var(--line);
+  --disabled-color: var(--ink-dim);
 }
 
 * { box-sizing: border-box; }
