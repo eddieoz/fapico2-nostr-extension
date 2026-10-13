@@ -235,27 +235,31 @@ async function loadKeys() {
       renderActive();
       return;
     }
-    list.innerHTML = model.rows
-      .map(
-        (r) => `
+    list.innerHTML = model.rows.map((r) => {
+      // US-1726 — the label (or "slot N") is the title; the npub is ONE clipped
+      // line (the full value rides along as the <span> title so it stays
+      // recoverable). The copy button lives in the actions row, OUTSIDE the
+      // <label>: a click-to-copy there can never also flip the active-key radio.
+      const full = r.npubBech32;
+      const clipped = full.length > 26 ? `${full.slice(0, 20)}…${full.slice(-4)}` : full;
+      const title = r.label || `slot ${r.idx}`;
+      return `
       <div class="key-row">
         <label class="key-pick" for="active-${r.idx}" title="Make this the active key">
           <input type="radio" name="active-key" id="active-${r.idx}" data-slot="${r.idx}" aria-label="Make slot ${r.idx} the active key">
-          <span class="key-idx">${r.idx}</span>
+          <span class="key-title">${escapeHtml(title)}</span>
           <span class="key-npub">
-            <span class="bech">${r.npubBech32.slice(0, 20)}…${r.npubBech32.slice(-4)}</span><br>
-            <span class="hex">${r.npub.slice(0, 16)}…</span>
-            ${r.label ? `<br><span class="key-label">“${escapeHtml(r.label)}”</span>` : ''}
+            <span class="bech" title="${full}">${clipped}</span>
           </span>
         </label>
         <span class="key-actions">
+          <button type="button" data-act="copy" data-idx="${r.idx}" title="Copy npub to clipboard">copy</button>
           <button data-act="label" data-idx="${r.idx}" title="Set label">label</button>
           <button data-act="export" data-idx="${r.idx}" title="Export key">export</button>
           <button data-act="delete" data-idx="${r.idx}" title="Delete key">delete</button>
         </span>
-      </div>`,
-      )
-      .join('');
+      </div>`;
+    }).join('');
     renderActive();
   } catch (err) {
     list.innerHTML = '';
@@ -268,12 +272,27 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+/** US-1726 — copy the FULL npub (public material only) to the clipboard from
+ *  the click gesture. This never touches the device and never switches the
+ *  active key: the copy button is a sibling of the row's <label>, so clicking
+ *  it cannot toggle the radio. */
+async function copyNpub(row) {
+  const npub = npubBech32(row.pubkey);
+  try {
+    await navigator.clipboard.writeText(npub);
+    notice(`copied npub for slot ${row.idx}`, 'ok');
+  } catch {
+    notice('clipboard unavailable — copy it by hand', 'err');
+  }
+}
+
 $('keys-list').addEventListener('click', (ev) => {
   const btn = ev.target.closest('button[data-act]');
   if (!btn) return;
   const idx = Number(btn.dataset.idx);
   const row = state.keys.find((k) => k.idx === idx);
   if (!row) return;
+  if (btn.dataset.act === 'copy') return copyNpub(row);
   if (btn.dataset.act === 'delete') openDelete(row);
   if (btn.dataset.act === 'label') openLabel(row);
   if (btn.dataset.act === 'export') openExport(row);
