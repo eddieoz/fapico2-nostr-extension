@@ -5,7 +5,7 @@ the six ordered steps, their status words and timings, the operator, and
 the board/firmware it ran against. A partial pass is not a pass — an
 incomplete entry stays open at the top until a complete one supersedes it.
 
-## OPEN — US-1734 UX-journey gate: all steps exercised on hardware; one sub-step re-verify pending (US-1741)
+## PASSED — 2026-10-13, US-1734 UX-journey gate: the full journey on hardware (feat/nostr, post-fix stack)
 
 **Board:** fapico2, USB `FA20:0002` ("The BLOCO Community fapico2"),
 operator eddieoz (every chooser pick, approval, and device touch).
@@ -57,14 +57,29 @@ The operator also ran the product on the real Nostr site **ditto.pub**.
    disconnect/re-pair affordance also doesn't exist. Both are design
    conversations, not riders.
 
-**Sub-step pending re-verify:** the **first-run handoff line** ("connected —
-open the fapico2 toolbar icon to create your first key", zero-key board
-stays open) was not observed live — the live connect ran into finding 2
-(port idle during the chooser) and completed only after a page refresh,
-which takes the returning-board path. The handoff is machine-tested
-(`tests/connect_page.test.js`, `tests/popup_connect_window.test.js`);
-re-verify on hardware after US-1741 lands, then this entry supersedes to a
+**First-run handoff — verified live (2026-10-13, second session):** after
+the fix stack (US-1741..1745) shipped, the journey was re-run from a
+brand-new browser profile (no grants, no forgotten flags): absent
+connect-first popup → Connect → the chooser → pair → the green handoff
+line **"connected — open the fapico2 toolbar icon to create your first
+key"** rendered and the tab **stayed open** (screenshot:
+`/tmp/us1734/us1734-handoff-live.png`, taken via CDP); a key was then
+generated in slot 0 (touch) leaving the board in a working state. The
+gate's every step has now passed on hardware; the entry supersedes to a
 full PASS.
+
+**Second-session findings (fixed in-branch):** US-1744 — the silent
+port black-hole (Chrome does not reliably deliver port.onDisconnect on
+worker idle death; a CDP monitor saw the worker start ZERO times during a
+hung connect) fixed by the staleness-guarded reconnect (`4519f12`); US-1745
+— the root of the whole family, fixed by the extension-page heartbeat so
+the worker never idles mid-flow (`cc4795b`); US-1746 (CRITICAL) — the
+US-1743 Disconnect toggle revoked the vendor-interface grant through
+HIDDevice.forget(), which can never be re-granted through the UI (the
+firmware's vendor interface is hidden by the chooser) — the toggle was
+reverted and pinned gone (`ffa269f`); the Chrome quirk that WebHID grants
+survive extension removal and the HID settings page does not list extension
+grants was recorded along the way.
 
 **Install note:** loading the unpacked dist shows a Chrome warning —
 "'hid' is only allowed for packaged apps, but this is a extension." — the
