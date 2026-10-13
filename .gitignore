@@ -6,3 +6,7 @@ node_modules/
 *.log
 .DS_Store
 .env
+
+# agent tooling session state
+.superpowers/
+.zcode/
