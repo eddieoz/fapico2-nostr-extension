@@ -8,6 +8,7 @@ import { createPendingStore } from './session.js';
 import { createHandlers } from './handlers.js';
 import { createPermissionStore } from './permissions.js';
 import { createPromptFlow, buildPreview } from './prompt.js';
+import { createPromptPortRegistry } from './prompt-ports.js';
 import { createConsentGate, hostFromSender } from './consent.js';
 import { createActiveSlotStore } from './active-slot.js';
 import { DeviceAbsentError } from '../core/loudness.js';
@@ -31,15 +32,13 @@ export async function bootWorker({
   await pending.adopt();
 
   const permissions = createPermissionStore({ storage: chrome_.storage.local });
-  // US-1723 — the prompt port's name is `nostr-prompt-<requestId>`, so this map
-  // binds a connected prompt port back to its request. Resolved from the port
-  // name on connect (no new persisted field); settle() uses it to push the
-  // outcome frame to exactly that window.
-  const requestPorts = new Map();
-  const deliver = (requestId, frame) => {
-    const port = requestPorts.get(requestId);
-    if (port) port.postMessage(frame);
-  };
+  // US-1723/US-1736 — the prompt port's name is `nostr-prompt-<requestId>`,
+  // so the registry binds a connected prompt port back to its request
+  // (resolved from the port name on connect, no persisted field); settle()
+  // uses it to push the outcome frame to exactly that window, dropping the
+  // binding on disconnect and swallowing a push to a dead port.
+  const promptPorts = createPromptPortRegistry();
+  const deliver = (requestId, frame) => promptPorts.deliver(requestId, frame);
   const prompt = createPromptFlow({ windows: chrome_.windows, deliver, beatMs: 800 });
   const consent = createConsentGate({
     permissions,
@@ -70,10 +69,10 @@ export async function bootWorker({
 
   chrome_.runtime.onConnect.addListener((port) => {
     attachPortListener(port, route);
-    // US-1723 — a prompt port's name is `nostr-prompt-<requestId>`; bind it so
-    // settle() can push the outcome frame to exactly that request's window.
-    const bound = /^nostr-prompt-(.+)$/.exec(port.name);
-    if (bound) requestPorts.set(bound[1], port);
+    // US-1723/US-1736 — a prompt port's name is `nostr-prompt-<requestId>`;
+    // bind it so settle() can push the outcome frame to exactly that
+    // request's window, and drop the binding when the port dies.
+    promptPorts.bind(port);
     // Re-delivery: a bridge reconnecting under the same port name after a
     // worker restart picks up the outstanding reply or typed error.
     // NOTE (US-1735): in practice this path is dead for relayed (tab)
@@ -90,7 +89,10 @@ export async function bootWorker({
         for (const reply of replies) port.postMessage(reply);
       })
       .catch(() => {});
-    port.onDisconnect.addListener(() => device.dropQueued(port.name));
+    port.onDisconnect.addListener(() => {
+      device.dropQueued(port.name);
+      promptPorts.drop(port); // US-1736 — a closed prompt window frees its binding
+    });
   });
 
   return { pending, device, route, permissions, prompt };

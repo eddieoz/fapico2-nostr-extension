@@ -7799,6 +7799,47 @@
     };
   }
 
+  // src/worker/prompt-ports.js
+  var PROMPT_PORT_NAME = /^nostr-prompt-(.+)$/;
+  function createPromptPortRegistry() {
+    const byKey = /* @__PURE__ */ new Map();
+    const keyOf = /* @__PURE__ */ new Map();
+    return {
+      /** Bind one connecting port. Returns the captured requestId or null. */
+      bind(port) {
+        const match = PROMPT_PORT_NAME.exec(port?.name ?? "");
+        if (!match) return null;
+        const key = match[1];
+        const previous = keyOf.get(port);
+        if (previous && previous !== key) byKey.delete(previous);
+        byKey.set(key, port);
+        keyOf.set(port, key);
+        return key;
+      },
+      /** Forget one port's binding (idempotent). */
+      drop(port) {
+        const key = keyOf.get(port);
+        if (key === void 0) return;
+        keyOf.delete(port);
+        if (byKey.get(key) === port) byKey.delete(key);
+      },
+      /**
+       * Push a frame to the port bound to `requestId`. Returns false when no
+       * live port is bound (unknown key, dropped, or the post threw).
+       */
+      deliver(requestId, frame) {
+        const port = requestId == null ? null : byKey.get(requestId);
+        if (!port) return false;
+        try {
+          port.postMessage(frame);
+          return true;
+        } catch {
+          return false;
+        }
+      }
+    };
+  }
+
   // src/worker/consent.js
   function hostFromSender(sender) {
     const raw = sender?.url ?? sender?.origin ?? sender?.tab?.url;
@@ -7910,11 +7951,8 @@
     await pending.load();
     await pending.adopt();
     const permissions = createPermissionStore({ storage: chrome_.storage.local });
-    const requestPorts = /* @__PURE__ */ new Map();
-    const deliver = (requestId, frame) => {
-      const port = requestPorts.get(requestId);
-      if (port) port.postMessage(frame);
-    };
+    const promptPorts = createPromptPortRegistry();
+    const deliver = (requestId, frame) => promptPorts.deliver(requestId, frame);
     const prompt = createPromptFlow({ windows: chrome_.windows, deliver, beatMs: 800 });
     const consent = createConsentGate({
       permissions,
@@ -7943,13 +7981,15 @@
     const route = createDispatch(handlers);
     chrome_.runtime.onConnect.addListener((port) => {
       attachPortListener(port, route);
-      const bound = /^nostr-prompt-(.+)$/.exec(port.name);
-      if (bound) requestPorts.set(bound[1], port);
+      promptPorts.bind(port);
       pending.takeForPort(port.name).then((replies) => {
         for (const reply of replies) port.postMessage(reply);
       }).catch(() => {
       });
-      port.onDisconnect.addListener(() => device.dropQueued(port.name));
+      port.onDisconnect.addListener(() => {
+        device.dropQueued(port.name);
+        promptPorts.drop(port);
+      });
     });
     return { pending, device, route, permissions, prompt };
   }
