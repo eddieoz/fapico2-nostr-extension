@@ -5,42 +5,70 @@ the six ordered steps, their status words and timings, the operator, and
 the board/firmware it ran against. A partial pass is not a pass — an
 incomplete entry stays open at the top until a complete one supersedes it.
 
-## PENDING — US-1734 (NOT YET PASSED): the UX-journey gate, board run not yet performed
+## OPEN — US-1734 UX-journey gate: all steps exercised on hardware; one sub-step re-verify pending (US-1741)
 
-> **This is not a pass and not an incomplete pass — no board has been run in
-> this environment.** There is no flashed fapico2 `feat/nostr` board here, so
-> the journey below cannot be exercised. This section records the gate's
-> status (step-wiring built and machine-tested; the board walk is
-> operator-pending) so the real result can be dropped in when hardware is
-> available.
+**Board:** fapico2, USB `FA20:0002` ("The BLOCO Community fapico2"),
+operator eddieoz (every chooser pick, approval, and device touch).
+**Extension:** `feat/nostr` dist, from `161bf89` + the typed-sentence fix
+`d21b86f` loaded mid-run. Chrome 154, real display, driven via CDP
+(trusted input events; the operator performed every consent decision).
+The operator also ran the product on the real Nostr site **ditto.pub**.
 
-The US-1734 gate is the full product journey on the board — distinct from the
-US-1709 device-ceremony passes above:
+**Journey steps — all PASS on hardware:**
 
-```
-connect  →  generate a key  →  switch the active key  →  sign on a site
-→  touch-timeout (6985)  →  sites revoke / revoke-all  →  delete key
-```
+- **delete key** — the operator's first step on the live board: recognition
+  copy (name + truncated npub + slot), checkbox gate, touch.
+- **generate key** — two keys generated (slots 0 and 1), touch each time;
+  slot picker and success notices as designed.
+- **site sign (ditto.pub)** — real NIP-07 login (getPublicKey) and posts
+  (sign_event) through the real consent path: one sentence + `SIGN_EVENT`
+  chip + identity row naming the active slot, approve → amber touch state →
+  touch → signed beat. A kind-22242 event rendered "signs a authentication
+  of a client" (the kind words map works). The prompt fits its 420×320
+  window (US-1740's rhythm fix, verified on the real surface).
+- **active-key switch** — radio slot 0 → 1, instant (touch-free), the strip
+  updated and the typed "sites that cached your other npub" notice showed;
+  restored to slot 0 at the end of the run.
+- **touch-timeout (6985)** — approve → withhold the touch → the firmware's
+  ~15 s timeout surfaced **in the prompt window** (D-UX6's headline fix
+  works on hardware). First run exposed a real bug: the window showed the
+  raw word "SIGN refused with 0x6985" instead of the typed sentence —
+  `describeSw` was only applied in the popup's display path. **Fixed during
+  the run** (`d21b86f`, red-first: the sentence now crosses both the settle
+  push and the port boundary); the re-run showed **"touch timed out — the
+  device asked for a touch and none came"** (operator-confirmed).
+- **sites revoke / revoke-all** — single revoke: one click, "revoked
+  ditto.pub" typed ok notice, list refreshed. Revoked grants re-prompt ✓.
+  Revoke-all: two-step armed confirm on the real toolbar popup ("Confirm
+  revoke all"; an expired arm disarms silently) → "revoked all grants".
 
-**Already machine-verified (no board needed):**
+**Findings (the run's purpose):**
 
-- Connect-page states, handoff and flow — `tests/connect_page.test.js`
-  (`1e825a6`): absent / busy / connected / error labels, the freshly paired
-  zero-key board staying open on handoff, a returning board closing after the
-  beat, a dismissed chooser returning to absent.
-- Prompt touch state and outcome beat — `tests/prompt_page.test.js` (US-1724):
-  Approve flips to the touch bar and stays open through the device touch
-  (D-UX6), Deny closes instantly, the 6985 touch-timed-out sentence settles
-  verbatim, and the page drives the outcome beat from the worker push.
-- The `0x6985` touch-timeout sentence is wired end-to-end:
-  `src/worker/error-map.js:19` → the prompt settles it verbatim
-  (`keys_generate.test.js`, US-1704).
+1. **FIXED during the run** — the raw status word crossed the settle push
+   and the port boundary (`d21b86f`, this branch).
+2. **US-1741 (queued)** — extension pages don't heal their port after an
+   MV3 worker restart (~30 s idle): the bridge reconnects lazily, the
+   popup/connect pages don't. Real trigger: the operator sitting at the
+   device chooser past the idle window → `pair_device` threw Chrome's
+   internal "Attempting to use a disconnected port object" into the page
+   (the typed-transport-error half of US-1741's scope).
+3. **UX note (recorded, unscheduled)** — when the connect tab auto-closes
+   (returning board), focus lands on the session's blank tab; a
+   disconnect/re-pair affordance also doesn't exist. Both are design
+   conversations, not riders.
 
-**Board run still required — record the real result here:** connect with the
-board granted, generate a key, switch the active key, sign on a site, trip a
-touch-timeout and confirm the 6985 sentence, revoke sites (and revoke-all),
-then delete the key. A full pass is one complete run; a partial or skipped
-step stays open at the top until a complete one supersedes it.
+**Sub-step pending re-verify:** the **first-run handoff line** ("connected —
+open the fapico2 toolbar icon to create your first key", zero-key board
+stays open) was not observed live — the live connect ran into finding 2
+(port idle during the chooser) and completed only after a page refresh,
+which takes the returning-board path. The handoff is machine-tested
+(`tests/connect_page.test.js`, `tests/popup_connect_window.test.js`);
+re-verify on hardware after US-1741 lands, then this entry supersedes to a
+full PASS.
+
+**Install note:** loading the unpacked dist shows a Chrome warning —
+"'hid' is only allowed for packaged apps, but this is a extension." — the
+permission works; cosmetic, Chrome's packaging policy text.
 
 ## PASSED — 2026-10-11, fapico-nostr `feat/nostr` (post-fix build)
 
