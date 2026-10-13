@@ -148,9 +148,12 @@ test('US-1710 set_active_slot from a tab sender is forbidden-method; the handler
   assert.equal(ran.length, 0, 'the handler never ran');
 });
 
-// US-1743 — the popup's Disconnect rides a trusted-only method.
-test('US-1743 unpair_device is a trusted-only method — never relayed to tabs', async () => {
+// US-1746 — unpair_device is NOT in the table: HIDDevice.forget() bricks
+// re-pairing when the firmware's vendor interface is hidden by the picker
+// (board-run finding, CRITICAL). The owner keeps unpair() for a future
+// design that can guarantee re-grantability.
+test('US-1746 unpair_device is not a dispatch method — the forget grant-revoke is UI-poison', async () => {
   const { TRUSTED_ONLY_METHODS, PAGE_ALLOWED_METHODS } = await import('../src/worker/dispatch.js');
-  assert.ok(TRUSTED_ONLY_METHODS.has('unpair_device'), 'unpair_device is trusted-only');
-  assert.ok(!PAGE_ALLOWED_METHODS.has('unpair_device'), 'the page allow-list stays five');
+  assert.ok(!TRUSTED_ONLY_METHODS.has('unpair_device'), 'unpair_device is not dispatchable');
+  assert.ok(!PAGE_ALLOWED_METHODS.has('unpair_device'));
 });

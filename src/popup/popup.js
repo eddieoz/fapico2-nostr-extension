@@ -122,13 +122,15 @@ function renderDeviceCard(h) {
   stateEl.innerHTML = model.line;
   const tryAgainBtn = $('try-again');
   if (tryAgainBtn) tryAgainBtn.hidden = !model.tryAgain;
-  // US-1743 — the card's action toggles: Connect when there is no board,
-  // Disconnect when it is connected (touch-free: close + revoke the grant).
+  // US-1746 — the card's action is ALWAYS Connect: a Disconnect that calls
+  // HIDDevice.forget() bricks re-pairing (the firmware's vendor interface is
+  // hidden by the picker, so a revoked grant can never be re-granted —
+  // board-run finding, CRITICAL). The grant is only revoked by removing the
+  // extension.
   const cardBtn = $('connect');
   if (cardBtn) {
-    const connected = model.dot === 'connected';
-    cardBtn.textContent = connected ? 'Disconnect' : 'Connect';
-    cardBtn.setAttribute('aria-label', connected ? 'Disconnect the board' : 'Connect the board');
+    cardBtn.textContent = 'Connect';
+    cardBtn.setAttribute('aria-label', 'Connect the board');
   }
 }
 
@@ -181,24 +183,11 @@ $('connect').addEventListener('click', async () => {
     notice('WebHID is not available in this browser', 'err');
     return;
   }
-  if (state.deviceState === 'connected') {
-    // US-1743 — Disconnect: drop the transport, close the handle, revoke the
-    // grant (HIDDevice.forget). Touch-free. The fresh probe re-renders the
-    // card and the home flips to connect-first — the next Connect is a
-    // genuine first run.
-    try {
-      await api.call('unpair_device');
-      await healthCheck({ force: true });
-      renderHomeState();
-    } catch (err) {
-      notice(err.message ?? 'could not disconnect', 'err');
-    }
-    return;
-  }
   try {
     // A tab, not a popup window: Chromium's chooser bubble closes itself
     // (kLostFocus) when anchored to a popup-type window — only a real tab
     // holds focus for it. Verified on Brave 151 and Chrome 154.
+    // US-1746 — the button is ALWAYS Connect: see the renderDeviceCard note.
     await chrome.tabs.create({ url: chrome.runtime.getURL('connect.html') });
     window.close(); // the action popup has nothing left to show
   } catch {

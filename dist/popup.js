@@ -7221,9 +7221,8 @@
     if (tryAgainBtn) tryAgainBtn.hidden = !model.tryAgain;
     const cardBtn = $("connect");
     if (cardBtn) {
-      const connected = model.dot === "connected";
-      cardBtn.textContent = connected ? "Disconnect" : "Connect";
-      cardBtn.setAttribute("aria-label", connected ? "Disconnect the board" : "Connect the board");
+      cardBtn.textContent = "Connect";
+      cardBtn.setAttribute("aria-label", "Connect the board");
     }
   }
   async function healthCheck({ force = false } = {}) {
@@ -7255,16 +7254,6 @@
     if (!navigator.hid) {
       setDeviceDot("absent");
       notice("WebHID is not available in this browser", "err");
-      return;
-    }
-    if (state.deviceState === "connected") {
-      try {
-        await api.call("unpair_device");
-        await healthCheck({ force: true });
-        renderHomeState();
-      } catch (err) {
-        notice(err.message ?? "could not disconnect", "err");
-      }
       return;
     }
     try {

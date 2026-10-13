@@ -306,12 +306,12 @@ test('US-1740 the key row stacks: the pick owns the width, the actions spread un
   assert.match(actions[1], /width:\s*100%/, 'the actions line spans the card');
 });
 
-// US-1743 — the device card's action toggles: Connect when absent/error,
-// Disconnect when connected (touch-free close + grant revoke). The popup
-// wiring is pinned as source (no jsdom in this repo).
-test('US-1743 the card button toggles to Disconnect while connected and calls unpair_device', async () => {
+// US-1746 — the card's action is ALWAYS Connect: a Disconnect that calls
+// HIDDevice.forget() bricks re-pairing (the vendor interface is hidden by
+// the picker — a revoked grant can never be re-granted). The toggle is
+// pinned GONE.
+test('US-1746 the card button never toggles to Disconnect and never calls unpair_device', async () => {
   const src = await read('src/popup/popup.js');
-  assert.match(src, /cardBtn\.textContent = connected \? 'Disconnect' : 'Connect'/, 'the label toggles with the device state');
-  assert.match(src, /if \(state\.deviceState === 'connected'\)\s*\{\s*\/\/ US-1743[\s\S]*?api\.call\('unpair_device'\)/, 'the connected path calls unpair_device');
-  assert.match(src, /await healthCheck\(\{ force: true \}\);\s*renderHomeState\(\);/, 'the fresh probe re-renders the card and the home');
+  assert.doesNotMatch(src, /'Disconnect'/, 'no Disconnect label anywhere');
+  assert.doesNotMatch(src, /unpair_device/, 'the popup never calls unpair_device');
 });

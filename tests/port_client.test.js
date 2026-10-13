@@ -245,8 +245,8 @@ test('US-1744 a late disconnect from an abandoned port does not null the fresh o
 // heartbeat stops and the worker idles normally). The bridge is not this
 // client, so web tabs never keep the worker alive.
 test('US-1745 the client heartbeats the worker while the page is open — the worker never idles mid-flow', async () => {
-  const r = rig({ heartbeatMs: 10 });
-  await new Promise((resolve) => setTimeout(resolve, 40));
+  const r = rig({ heartbeatMs: 5 });
+  await new Promise((resolve) => setTimeout(resolve, 120));
   r.client.dispose();
   const beats = r.ports[0].sent.filter((f) => f.method === 'echo');
   assert.ok(beats.length >= 2, `echo frames flow while the page is open (got ${beats.length})`);

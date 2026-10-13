@@ -174,11 +174,12 @@ test('US-1742 forget releases the device handle — a re-pair never double-opens
   assert.equal(closed, 1, 'forget() closed the stale handle first');
 });
 
-// US-1743 — the popup's Disconnect: drop the transport, close the handle,
-// and revoke the browser grant (HIDDevice.forget). Touch-free: nothing here
-// touches the device; the next Connect is a genuine first run (the chooser
-// runs again, and a zero-key board shows the handoff).
-test('US-1743 unpair drops the transport, closes the handle and revokes the grant', async () => {
+// US-1746 — the owner's unpair() is correct device hygiene (drop transport,
+// close the handle, revoke the grant) but is NOT wired to the UI: on this
+// firmware the vendor interface is hidden by the picker, so a revoked grant
+// can never be re-granted (the board run bricked itself live). Kept for a
+// future design that can guarantee re-grantability.
+test('US-1746 the owner unpair drops the transport, closes the handle and revokes the grant (not UI-wired)', async () => {
   let opened = 0;
   let closed = 0;
   let forgot = 0;

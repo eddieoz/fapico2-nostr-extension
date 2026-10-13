@@ -120,13 +120,6 @@ export function createHandlers({
     // US-1702: the popup drives the chooser itself (a user gesture), then
     // tells the worker to adopt the granted device — the worker still never
     // opens a chooser.
-    // US-1743 — the popup's Disconnect: drop the transport, close the
-    // handle, revoke the browser grant. Trusted-only, touch-free.
-    unpair_device: async () => {
-      device.unpair();
-      return {};
-    },
-
     pair_device: async () => {
       device.forget();
       // The user just chose the device: this probe bypasses the 1 s window
