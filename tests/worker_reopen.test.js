@@ -173,3 +173,37 @@ test('US-1742 forget releases the device handle — a re-pair never double-opens
   assert.equal(opens, 2, 'the second run re-opened the handle');
   assert.equal(closed, 1, 'forget() closed the stale handle first');
 });
+
+// US-1743 — the popup's Disconnect: drop the transport, close the handle,
+// and revoke the browser grant (HIDDevice.forget). Touch-free: nothing here
+// touches the device; the next Connect is a genuine first run (the chooser
+// runs again, and a zero-key board shows the handoff).
+test('US-1743 unpair drops the transport, closes the handle and revokes the grant', async () => {
+  let opened = 0;
+  let closed = 0;
+  let forgot = 0;
+  const dev = {
+    ...grantedDevice(),
+    opened: false,
+    granted: true,
+    open: async () => { dev.opened = true; opened += 1; },
+    close: async () => { dev.opened = false; closed += 1; },
+    // HIDDevice.forget() revokes the grant — the device vanishes from
+    // getDevices(), exactly like the browser does it.
+    forget: () => { forgot += 1; dev.granted = false; },
+  };
+  const owner = createDeviceOwner({
+    getGrantedDevice: async () => (dev.granted ? dev : null),
+    createTransport: (d) => ({
+      open: async () => d.open(),
+      close: async () => d.close(),
+      vendor: async () => ({ sw: SW.OK, data: new Uint8Array(0) }),
+    }),
+  });
+  await owner.run(0x40, 0, new Uint8Array(0));
+  owner.unpair();
+  assert.equal(closed, 1, 'the handle is closed');
+  assert.equal(forgot, 1, 'the browser grant is revoked (HIDDevice.forget)');
+  const err = await owner.run(0x40, 0, new Uint8Array(0)).catch((e) => e);
+  assert.ok(err instanceof DeviceAbsentError, 'after unpair the device is absent — the next Connect is a first run');
+});

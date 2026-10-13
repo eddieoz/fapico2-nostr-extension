@@ -160,6 +160,23 @@ export function createDeviceOwner({
       };
     },
 
+    /** US-1743 — the popup's Disconnect: drop the transport, close the
+     *  WebHID handle, and revoke the browser grant (HIDDevice.forget) —
+     *  the next Connect is a genuine first run. Touch-free: nothing here
+     *  touches the device. */
+    unpair() {
+      const d = device;
+      transport = null;
+      device = null;
+      opening = null;
+      d?.close?.()?.catch?.(() => {});
+      try {
+        d?.forget?.();
+      } catch {
+        /* the grant is already gone */
+      }
+    },
+
     /** The transport is gone (device unplugged) or a re-pair is adopting a
      *  fresh grant (US-1742 board run: the stale WebHID handle stayed open
      *  and the re-pair's open() hit Chrome's "device is already open") —

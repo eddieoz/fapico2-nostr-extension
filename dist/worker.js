@@ -600,6 +600,22 @@
           queued: queue.length
         };
       },
+      /** US-1743 — the popup's Disconnect: drop the transport, close the
+       *  WebHID handle, and revoke the browser grant (HIDDevice.forget) —
+       *  the next Connect is a genuine first run. Touch-free: nothing here
+       *  touches the device. */
+      unpair() {
+        const d = device;
+        transport = null;
+        device = null;
+        opening = null;
+        d?.close?.()?.catch?.(() => {
+        });
+        try {
+          d?.forget?.();
+        } catch {
+        }
+      },
       /** The transport is gone (device unplugged) or a re-pair is adopting a
        *  fresh grant (US-1742 board run: the stale WebHID handle stayed open
        *  and the re-pair's open() hit Chrome's "device is already open") —
@@ -7506,6 +7522,12 @@
       // US-1702: the popup drives the chooser itself (a user gesture), then
       // tells the worker to adopt the granted device — the worker still never
       // opens a chooser.
+      // US-1743 — the popup's Disconnect: drop the transport, close the
+      // handle, revoke the browser grant. Trusted-only, touch-free.
+      unpair_device: async () => {
+        device.unpair();
+        return {};
+      },
       pair_device: async () => {
         device.forget();
         const res = await device.ping({ force: true });

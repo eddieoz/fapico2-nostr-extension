@@ -122,6 +122,14 @@ function renderDeviceCard(h) {
   stateEl.innerHTML = model.line;
   const tryAgainBtn = $('try-again');
   if (tryAgainBtn) tryAgainBtn.hidden = !model.tryAgain;
+  // US-1743 — the card's action toggles: Connect when there is no board,
+  // Disconnect when it is connected (touch-free: close + revoke the grant).
+  const cardBtn = $('connect');
+  if (cardBtn) {
+    const connected = model.dot === 'connected';
+    cardBtn.textContent = connected ? 'Disconnect' : 'Connect';
+    cardBtn.setAttribute('aria-label', connected ? 'Disconnect the board' : 'Connect the board');
+  }
 }
 
 async function healthCheck({ force = false } = {}) {
@@ -171,6 +179,20 @@ $('connect').addEventListener('click', async () => {
   if (!navigator.hid) {
     setDeviceDot('absent');
     notice('WebHID is not available in this browser', 'err');
+    return;
+  }
+  if (state.deviceState === 'connected') {
+    // US-1743 — Disconnect: drop the transport, close the handle, revoke the
+    // grant (HIDDevice.forget). Touch-free. The fresh probe re-renders the
+    // card and the home flips to connect-first — the next Connect is a
+    // genuine first run.
+    try {
+      await api.call('unpair_device');
+      await healthCheck({ force: true });
+      renderHomeState();
+    } catch (err) {
+      notice(err.message ?? 'could not disconnect', 'err');
+    }
     return;
   }
   try {
