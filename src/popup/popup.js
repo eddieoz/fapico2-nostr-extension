@@ -516,6 +516,20 @@ $('export-confirm').addEventListener('click', async () => {
     notice('');
   } catch { /* notice carries the named failure */ }
 });
+/** US-1730 — copy the revealed nsec from the click gesture. The scrub rule
+ *  extends here: on a rejected copy the notice is a fixed typed string — never
+ *  the secret — so a failed copy leaks nothing. */
+async function copyScalar() {
+  const nsec = $('export-scalar').textContent;
+  if (!nsec) return;
+  try {
+    await navigator.clipboard.writeText(nsec);
+    notice('Copied to clipboard');
+  } catch {
+    notice('could not copy — select the text and copy it by hand');
+  }
+}
+$('export-copy').addEventListener('click', () => copyScalar());
 $('export-cancel').addEventListener('click', () => {
   $('export-scalar').textContent = '';
   show('keys');

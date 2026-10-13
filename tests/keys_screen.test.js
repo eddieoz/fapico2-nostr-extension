@@ -249,3 +249,30 @@ test('US-1729 the popup renders the delete confirm from the model (naming stays 
   assert.match(src, /m\.activeSentence/, 'the active sentence is appended only when present');
 });
 
+// --- US-1730: export — a copy button on the one-time reveal ------------------
+
+test('US-1730 the Copy button lives inside the hidden reveal area (no pre-reveal affordance)', () => {
+  const copies = (html.match(/id="export-copy"/g) ?? []);
+  assert.equal(copies.length, 1, 'exactly one copy button — no pre-reveal duplicate');
+  const out = html.match(/id="export-out"[^>]*>([\s\S]*?)<p class="muted">Erase/);
+  assert.ok(out, 'the export-out reveal area exists');
+  assert.ok(out[1].includes('export-copy'), 'the copy button is inside the revealed area');
+  assert.match(html, /id="export-out"[^>]*hidden/, 'the reveal area is hidden until the touch reveals it');
+});
+
+test('US-1730 clicking Copy writes the revealed nsec to the clipboard from the gesture', () => {
+  const copyFn = src.match(/function copyScalar[\s\S]*?\n\}/);
+  assert.ok(copyFn, 'a copyScalar handler exists');
+  const body = copyFn[0];
+  assert.match(body, /export-scalar'\)\.textContent/, 'it reads the revealed nsec');
+  assert.match(body, /navigator\.clipboard\.writeText\(\s*nsec\s*\)/, 'it writes the nsec to the clipboard from the gesture');
+});
+
+test('US-1730 a rejected copy shows a typed notice containing no secret', () => {
+  const copyFn = src.match(/function copyScalar[\s\S]*?catch[\s\S]*?\n\}/);
+  assert.ok(copyFn, 'copyScalar has a catch');
+  const noticeArg = copyFn[0].match(/notice\(([^)]*)\)/);
+  assert.ok(noticeArg, 'the rejection renders a notice');
+  assert.match(noticeArg[1].trim(), /^['"`]/, 'the rejection notice is a typed literal — no secret interpolation');
+});
+

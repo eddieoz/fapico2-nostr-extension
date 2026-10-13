@@ -319,6 +319,11 @@ nav button.active { color: var(--amber); }
   word-break: break-all;
   color: var(--ink);
 }
+/* US-1730 — the Copy button sits beside the revealed nsec, inside the
+   already-revealed area only. */
+.reveal-row { display: flex; gap: 8px; align-items: stretch; }
+.reveal-row .reveal { flex: 1 1 auto; margin: 0; }
+.reveal-row button { flex: none; }
 
 .actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
 
