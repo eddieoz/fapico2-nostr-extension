@@ -10,6 +10,8 @@ import { readFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { connectStateLabel, handoffDecision, createConnectFlow } from '../src/popup/connect.js';
+
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFile(join(root, p), 'utf8');
 
@@ -73,4 +75,82 @@ test('US-1712 build copies connect.css into dist (regression: a missing copy 404
   const build = await read('build.mjs');
   const list = build.match(new RegExp('\\[[^\\]]*connect\\.css[^\\]]*\\]'));
   assert.ok(list, 'build.mjs lists connect.css in the verbatim-copy array');
+});
+
+// US-1734 — the connect step of the UX release gate. The page-state map, the
+// first-run handoff decision, and the flow driven by a mock chooser + worker
+// (no DOM): a board that grants, a returning board, and a dismissed chooser.
+
+test('US-1734 connectStateLabel maps each state to its line, dot and class', () => {
+  assert.deepEqual(connectStateLabel('connected'), {
+    line: 'fapico2 board connected', dot: 'connected', lineClass: 'connect-state connected',
+  });
+  assert.deepEqual(connectStateLabel('busy'), {
+    line: 'busy — retrying in a second', dot: 'busy', lineClass: 'connect-state waiting',
+  });
+  assert.deepEqual(connectStateLabel('error', 'try again'), {
+    line: 'device error — try again', dot: 'error', lineClass: 'connect-state error',
+  });
+  assert.deepEqual(connectStateLabel('absent'), {
+    line: 'no board granted yet', dot: 'absent', lineClass: 'connect-state',
+  });
+  assert.deepEqual(connectStateLabel('idle'), {
+    line: 'no board granted yet', dot: 'absent', lineClass: 'connect-state',
+  });
+});
+
+test('US-1734 an error state is distinct from absent — never the absent line', () => {
+  const err = connectStateLabel('error', 'the board refused');
+  assert.notEqual(err.line, 'no board granted yet');
+  assert.match(err.line, /device error/);
+  assert.match(err.lineClass, /connect-state error/);
+});
+
+test('US-1734 handoffDecision keeps a freshly paired zero-key board open', () => {
+  assert.deepEqual(handoffDecision(0), { close: false, handoff: true });
+});
+
+test('US-1734 a returning board closes after the beat; a failed listing does not hang', () => {
+  assert.deepEqual(handoffDecision(3), { close: true, handoff: false });
+  assert.deepEqual(handoffDecision(null), { close: true, handoff: false });
+});
+
+test('US-1734 a connected zero-key board returns a handoff and stays open', async () => {
+  let closed = false;
+  const flow = createConnectFlow({
+    requestDevice: async () => [{}],
+    call: async (m) => (m === 'pair_device' ? { state: 'connected' } : []),
+    onClose: () => { closed = true; },
+  });
+  const out = await flow.connect();
+  assert.equal(out.state, 'connected');
+  assert.equal(out.handoff, true, 'first-run handoff is flagged');
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(closed, false, 'the journey board stays open — it points at the toolbar icon');
+});
+
+test('US-1734 a connected returning board closes after the beat', async () => {
+  let closed = false;
+  const flow = createConnectFlow({
+    requestDevice: async () => [{}],
+    call: async (m) => (m === 'pair_device' ? { state: 'connected' } : [{}, {}, {}]),
+    onClose: () => { closed = true; },
+    autoCloseMs: 5,
+  });
+  const out = await flow.connect();
+  assert.equal(out.handoff, undefined, 'a returning board is not a handoff');
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(closed, true, 'the beat fired, then the window dismissed itself');
+});
+
+test('US-1734 a dismissed chooser returns absent + cancelled and stays up to retry', async () => {
+  const flow = createConnectFlow({
+    requestDevice: async () => {
+      throw Object.assign(new Error('no device selected'), { name: 'NotFoundError' });
+    },
+    call: async () => ({}),
+  });
+  const out = await flow.connect();
+  assert.equal(out.state, 'absent');
+  assert.equal(out.cancelled, true);
 });
