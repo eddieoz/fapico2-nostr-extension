@@ -125,30 +125,35 @@ test('US-1672 each item is individually touch-gated: no item shares a ceremony',
   assert.deepEqual(ceremonies, ['A', 'B', 'C'], 'one gate per item, sequentially');
 });
 
-test('US-1672 the keepalive holds the service worker for the ceremony and stops cleanly', async () => {
+// Mocked timers: a 1 ms loop asserted against a 15 ms wall-clock window
+// starves under a loaded runner (8 concurrent test files) — the assertion
+// must not depend on scheduler fairness.
+test('US-1672 the keepalive holds the service worker for the ceremony and stops cleanly', (t) => {
+  t.mock.timers.enable({ apis: ['setInterval'] });
   let ticks = 0;
   const keepalive = startKeepalive({ periodMs: 1, tick: () => (ticks += 1) });
-  await sleep(15);
+  t.mock.timers.tick(10);
   assert.ok(ticks > 3, 'the loop ticked while the ceremony ran');
   keepalive.stop();
   const frozen = ticks;
-  await sleep(15);
+  t.mock.timers.tick(50);
   assert.equal(ticks, frozen);
   keepalive.stop(); // idempotent
 });
 
-test('US-1672 the touch-window countdown reports remaining time and ends at zero', async () => {
+test('US-1672 the touch-window countdown reports remaining time and ends at zero', (t) => {
+  t.mock.timers.enable({ apis: ['setInterval', 'Date'] });
   const ticks = [];
   const countdown = startWindowCountdown({
     windowMs: 40,
     tickMs: 10,
     onTick: (remainingMs) => ticks.push(remainingMs),
   });
-  await sleep(70);
+  t.mock.timers.tick(40);
   assert.ok(ticks.length >= 3, 'it ticked across the window');
   assert.equal(ticks.at(-1), 0, 'the window ends at zero, not by silence');
   assert.ok(
-    ticks.every((t, i) => i === 0 || t <= ticks[i - 1]),
+    ticks.every((r, i) => i === 0 || r <= ticks[i - 1]),
     'remaining time only decreases',
   );
   // The 15 s default is the device's touch window, named once.
