@@ -1,0 +1,48 @@
+/* fapico2 Nostr — shared design tokens and primitives (US-1711).
+   ONE source of the colour/typography variables (:root — the union of the
+   old popup.css and prompt.css sets) and the cross-page primitives both
+   extension pages consume. This sheet carries NO body/layout rules — that
+   stays per page (D-UX3). popup.html, connect.html and prompt.html all link
+   this BEFORE their own stylesheet, so the verbatim-copy build keeps it
+   byte-for-byte. */
+
+:root {
+  --bg: #14171c;           /* panel chassis */
+  --bg-raise: #1e2229;     /* the icon's charcoal */
+  --bg-inset: #0d0f12;
+  --line: #2c313a;
+  --line-strong: #3d4450;
+  --ink: #d7dce3;
+  --ink-dim: #8a919c;
+  --amber: #ffb340;        /* the device LED — touch state only */
+  --amber-dim: #7a5518;
+  --ok: #7ddc7d;
+  --err: #ff8080;
+  --mono: ui-monospace, 'JetBrains Mono', 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --r: 8px;
+
+  /* US-1727 — the disabled primitive: an inert, non-amber look. A disabled
+     control renders with this inset fill, muted border and muted text at full
+     opacity, so a disabled amber primary never reads as enabled (the old
+     opacity:0.55 left a faded amber that still looked on). */
+  --disabled-bg: var(--bg-inset);
+  --disabled-border: var(--line);
+  --disabled-color: var(--ink-dim);
+}
+
+* { box-sizing: border-box; }
+
+/* Cross-page primitives — identical in popup.css and prompt.css. Page-
+   specific button sizing and the page modifiers (.primary/.danger/.approve/
+   .deny …) stay in the page sheets; the shared reset + pulse live here. */
+input[type='checkbox'] { accent-color: var(--amber); }
+button:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+input:focus-visible, textarea:focus-visible { outline: 2px solid var(--amber); outline-offset: 0; border-color: var(--amber); }
+
+/* US-1724 — the amber pulse the touch bar borrows (popup + prompt both
+   reference it; defined once here so it is a genuine shared primitive). */
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 179, 64, 0.35); }
+  50% { box-shadow: 0 0 12px 2px rgba(255, 179, 64, 0.35); }
+}

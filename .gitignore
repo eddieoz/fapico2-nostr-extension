@@ -3,7 +3,11 @@
 docs/tasks/
 
 node_modules/
-dist/
 *.log
 .DS_Store
 .env
+
+# agent tooling artifacts (plans, specs, session state)
+docs/superpowers/
+.superpowers/
+.zcode/

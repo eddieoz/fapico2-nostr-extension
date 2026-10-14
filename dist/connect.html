@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Connect fapico2</title>
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="popup.css">
+  <link rel="stylesheet" href="connect.css">
+</head>
+<body>
+  <header>
+    <h1>connect fapico2</h1>
+    <span id="device-dot">checking…</span>
+  </header>
+  <main>
+    <div id="touch-bar" role="status"><span class="led"></span><span id="touch-text">touch your device</span></div>
+    <div id="notice" class="notice" hidden aria-live="polite" aria-atomic="true"></div>
+
+    <p class="connect-lede">Click <b>Connect</b> and the browser will show the device picker. Select the entry named <b>fapico2</b>. The firmware's security-key interface is hidden by the browser — the <b>fapico2</b> entry is the right one.</p>
+
+    <section class="card">
+      <div class="row">
+        <span class="connect-state" id="connect-state">no board granted yet</span>
+        <button id="connect" class="primary">Connect</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="connect.js"></script>
+</body>
+</html>

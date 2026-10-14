@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>fapico2 Nostr — approve request</title>
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="prompt.css">
+</head>
+<body>
+  <header><h1>fapico2 nostr — approval</h1></header>
+
+  <div class="request-host" id="host">…</div>
+  <div class="request-wants" id="wants">
+    <span class="method-chip" id="method-chip">…</span>
+    <div class="request-headline" id="headline">…</div>
+  </div>
+  <div class="request-identity" id="identity" hidden></div>
+
+  <p class="hint" id="hint"></p>
+
+  <label class="check">
+    <input type="checkbox" id="remember">
+    <span id="remember-note"></span>
+  </label>
+
+  <div class="actions" id="actions">
+    <button id="deny" class="deny">Deny</button>
+    <button id="approve" class="approve">Approve</button>
+  </div>
+
+  <!-- US-1724 — the touch state: replaces the actions until the device op
+       settles. The amber touch bar (shared primitive) — the physical press is
+       the final consent. -->
+  <div class="touch-bar" id="touch-bar" role="status" hidden>
+    <span class="led"></span>
+    <span id="touch-text">touch your fapico2 board</span>
+  </div>
+
+  <!-- US-1724 — the outcome beat (a confirmation, or the typed error sentence)
+       and the lost-connection notice. -->
+  <div class="outcome" id="outcome" role="status" hidden></div>
+
+  <p class="footnote">
+    After your approval the device itself asks for a touch — the physical
+    press, not this window, is the final consent. No key material is ever
+    shown or stored here.
+  </p>
+
+  <script src="prompt.js"></script>
+</body>
+</html>

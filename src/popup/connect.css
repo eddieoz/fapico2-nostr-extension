@@ -1,0 +1,42 @@
+/* The connect tab — a full-page centered card (US-1712).
+   The WebHID chooser can't anchor to the action popup (it closes on blur and
+   cancels the request), so it runs here in a real tab. Unlike the popup's
+   360px strip pinned top-left, this page fills the viewport with the chassis
+   and centers a max-480px card. The connect.js flow logic is untouched; tokens
+   come from tokens.css (US-1711) and the shared primitives (.card, .notice,
+   #touch-bar, button.primary, header, #device-dot) from popup.css — whose
+   360px body is overridden here (connect.css is linked last). */
+
+body {
+  width: 100vw;
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--ink);
+  font: 13px/1.5 var(--sans);
+}
+
+main {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+  box-sizing: border-box;
+}
+
+/* the centered lede and card take a readable measure, not the full width */
+main .connect-lede,
+main .card {
+  width: 100%;
+  max-width: 480px;
+}
+
+.connect-lede { font: 12px/1.6 var(--mono); color: var(--ink-dim); margin: 2px 0 12px; }
+.connect-state { font: 12px/1.4 var(--mono); color: var(--ink-dim); min-height: 18px; }
+.connect-state.connected { color: var(--ok); }
+.connect-state.waiting { color: var(--amber); }
+.connect-state.error { color: var(--err); }

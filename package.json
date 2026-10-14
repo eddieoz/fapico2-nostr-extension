@@ -1,0 +1,22 @@
+{
+  "name": "fapico2-nostr-extension",
+  "version": "0.1.0",
+  "description": "Nostr-only, hardware-first browser extension: keys live on the fapico2 board, consent is a physical touch",
+  "type": "module",
+  "private": true,
+  "packageManager": "pnpm@10.8.0",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "pnpm run build && node --test --test-concurrency=8 --test-force-exit tests/*.test.js tests/smoke/*.test.js",
+    "test:smoke": "node tests/smoke/run.js",
+    "check": "pnpm run build && git diff --exit-code -- dist/ && pnpm test"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "nostr-tools": "^2.25.2",
+    "@noble/curves": "^1.9.0",
+    "@noble/hashes": "^1.8.0",
+    "@scure/base": "^1.2.4"
+  }
+}

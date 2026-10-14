@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>fapico2 Nostr</title>
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <h1>fapico2 nostr</h1>
+    <span id="device-dot">checking…</span>
+  </header>
+
+  <main>
+    <div id="touch-bar" role="status"><span class="led"></span><span id="touch-text">touch your device</span></div>
+    <div id="notice" class="notice" hidden aria-live="polite" aria-atomic="true"></div>
+
+    <!-- Device card -->
+    <section class="card" id="device-card">
+      <div class="row">
+        <span class="device-state" id="device-state">checking…</span>
+        <div class="card-actions">
+          <button id="try-again" class="primary" hidden>Try again</button>
+          <button id="connect" class="primary">Connect</button>
+        </div>
+      </div>
+      <div class="active-strip" id="active-strip" role="status"></div>
+    </section>
+
+    <!-- KEYS (home) -->
+    <section class="screen active" id="screen-keys" aria-label="Keys">
+      <h2 class="screen-title">Keys</h2>
+      <div class="occupancy" id="occupancy"></div>
+      <div id="keys-list"></div>
+      <div class="actions">
+        <button id="go-generate" class="primary">Generate</button>
+        <button id="go-import" class="ghost">Import</button>
+      </div>
+    </section>
+
+    <!-- CONNECT-FIRST (US-1716) — the honest first run: the board is absent, so
+         Generate and Import are disabled with a stated reason and the strip
+         shows nothing is active. Connecting completes the ritual, then the keys
+         home takes over. -->
+    <section class="screen" id="screen-connect-first" aria-label="Connect your board">
+      <h2 class="screen-title">Your first key</h2>
+      <p class="muted" id="connect-ritual">Plug in your fapico2, click <b>Connect</b>, and it asks for a touch whenever something needs signing.</p>
+      <div class="actions">
+        <button id="go-generate-first" class="primary">Generate</button>
+        <button id="go-import-first" class="ghost">Import</button>
+      </div>
+      <!-- US-1740 — the disabled reason is visible text (US-1716's stated
+           reason), not only a hover title an absent-board user never sees. -->
+      <p class="muted" id="connect-reason" hidden></p>
+    </section>
+
+    <!-- GENERATE -->
+    <section class="screen" id="screen-generate" aria-label="Generate key">
+      <h2 class="screen-title">Generate key</h2>
+      <p class="muted">Pick an empty slot. Generation happens on the device and needs a touch. A generated key can only be removed with Delete — there is no undo.</p>
+      <div class="slot-picker" id="gen-slots"></div>
+      <div class="actions">
+        <button id="gen-confirm" class="primary amber" disabled>Generate &amp; touch</button>
+        <button id="gen-cancel" class="ghost">Back</button>
+      </div>
+    </section>
+
+    <!-- IMPORT -->
+    <section class="screen" id="screen-import" aria-label="Import key">
+      <h2 class="screen-title">Import key</h2>
+      <label class="field">Secret (nsec… or 64-hex scalar)
+        <input type="password" id="import-secret" autocomplete="off" spellcheck="false">
+      </label>
+      <p class="muted">Validated here, never stored, never logged. The device touch moves it onto the board.</p>
+      <div id="import-confirm" hidden>
+        <p class="muted">This imports the key that publishes as <code id="import-npub"></code></p>
+        <div class="slot-picker" id="import-slots"></div>
+      </div>
+      <div class="actions">
+        <button id="import-next" class="primary">Check secret</button>
+        <button id="import-confirm-btn" class="primary amber" hidden>Import &amp; touch</button>
+        <button id="import-cancel" class="ghost">Back</button>
+      </div>
+    </section>
+
+    <!-- DELETE -->
+    <section class="screen" id="screen-delete" aria-label="Delete key">
+      <h2 class="screen-title">Delete key</h2>
+      <p class="muted" id="delete-what"></p>
+      <label class="check"><input type="checkbox" id="delete-understand"> I understand this is permanent — the key is destroyed on the device.</label>
+      <div class="actions">
+        <button id="delete-confirm" class="danger" disabled>Delete &amp; touch</button>
+        <button id="delete-cancel" class="ghost">Back</button>
+      </div>
+    </section>
+
+    <!-- LABEL -->
+    <section class="screen" id="screen-label" aria-label="Set label">
+      <h2 class="screen-title">Set label</h2>
+      <p class="muted" id="label-what"></p>
+      <label class="field">Label (≤ 32 UTF-8 bytes)
+        <input type="text" id="label-input" maxlength="64" spellcheck="false">
+      </label>
+      <p class="muted" id="label-bytes"></p>
+      <div class="actions">
+        <button id="label-confirm" class="primary amber">Set label &amp; touch</button>
+        <button id="label-cancel" class="ghost">Back</button>
+      </div>
+    </section>
+
+    <!-- EXPORT -->
+    <section class="screen" id="screen-export" aria-label="Export key">
+      <h2 class="screen-title">Export key</h2>
+      <p class="muted" id="export-what"></p>
+      <p class="muted"><b>Export shows the secret scalar once, in this window only.</b> It is never stored. Anyone who reads it owns the identity.</p>
+      <label class="check"><input type="checkbox" id="export-understand"> I understand this reveals the secret.</label>
+      <div class="actions">
+        <button id="export-confirm" class="primary amber" disabled>Reveal &amp; touch</button>
+        <button id="export-cancel" class="ghost">Back</button>
+      </div>
+      <div id="export-out" hidden><div class="reveal-row"><p class="reveal" id="export-scalar"></p><button id="export-copy" type="button" class="ghost">Copy</button></div><p class="muted">Erase this from view when done — the popup drops it on close.</p></div>
+    </section>
+
+    <!-- SITES -->
+    <section class="screen" id="screen-sites" aria-label="Sites">
+      <h2 class="screen-title">Sites with grants</h2>
+      <div id="sites-list"></div>
+      <div class="actions"><button id="revoke-all" class="danger">Revoke all</button></div>
+    </section>
+  </main>
+
+  <nav>
+    <button id="nav-keys" class="active" aria-label="Keys screen">Keys</button>
+    <button id="nav-sites" aria-label="Sites screen">Sites</button>
+  </nav>
+
+  <script src="popup.js"></script>
+</body>
+</html>

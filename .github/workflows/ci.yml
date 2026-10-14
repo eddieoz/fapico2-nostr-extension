@@ -1,0 +1,36 @@
+# US-1689 — the CI gate. Same three steps a developer runs (install, test,
+# build) plus the bundle-freshness diff: dist/ is committed, and a rebuild
+# that differs from the committed copy fails the tree — the committed bundle
+# is never stale (the OpenXrypt ci.yml pattern). The CDP smoke gate
+# (US-1708) runs when Chrome is available on the runner.
+name: ci
+
+on:
+  push:
+    # main only — a PR head SHA would otherwise get two runs (push +
+    # pull_request), and the duplicate can leave a stale check in the rollup
+    branches: [main]
+  pull_request:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        # the version comes from package.json's packageManager field —
+        # passing one here too would be "Multiple versions of pnpm specified"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - name: the committed dist/ must be fresh
+        run: git diff --exit-code -- dist/
+      - name: CDP smoke (US-1708) — release blocker when Chrome is present
+        run: pnpm run test:smoke
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+        continue-on-error: false
