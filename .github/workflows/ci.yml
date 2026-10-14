@@ -7,6 +7,9 @@ name: ci
 
 on:
   push:
+    # main only — a PR head SHA would otherwise get two runs (push +
+    # pull_request), and the duplicate can leave a stale check in the rollup
+    branches: [main]
   pull_request:
 
 jobs:
