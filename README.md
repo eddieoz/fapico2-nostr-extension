@@ -31,8 +31,16 @@ device (firmware-enforced — the extension cannot bypass it).
 
 - **NIP-07 on hardware** — `getPublicKey`, `signEvent`, `nip44.encrypt`,
   `nip44.decrypt` (plus `listKeys`) implemented by the board, not the
-  browser. Key management (generate, import, label, export, delete, active
-  slot) lives in the popup only.
+  browser. Key management (generate, import, label, delete, active slot)
+  lives in the popup only.
+- **PIN custody (US-1691..1707)** — an optional board PIN guards every key:
+  after a restart, signing asks for it (the board answers `0x6982` and the
+  popup suspends the interrupted operation through the verify dialog and
+  resumes it). Set, verify, change, and lock all live in the popup; the PIN
+  never crosses to a page, three durable wrong tries lock the board, and
+  setting the PIN does not open the session — verifying does. Secrets are
+  never exportable: the board keeps them, and the extension has no export
+  verb.
 - **Per-site consent** — a grant popup per site and method, with optional
   "remember this site"; the device touch is always required on top, and the
   Sites screen lists and revokes grants.
