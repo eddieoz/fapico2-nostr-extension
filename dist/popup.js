@@ -7191,9 +7191,186 @@
     return { armed, arm, disarm, confirm };
   }
 
+  // src/worker/pin_flow.js
+  var CAP_PIN_MGMT = 4;
+  var FLAG_PIN_SET = 1;
+  var FLAG_SESSION_UNLOCKED = 2;
+  function parsePinState(info) {
+    const caps = info?.caps ?? 0;
+    const flags = info?.flags ?? 0;
+    const supported = (caps & CAP_PIN_MGMT) !== 0;
+    const pinSet = (flags & FLAG_PIN_SET) !== 0;
+    const unlocked = (flags & FLAG_SESSION_UNLOCKED) !== 0;
+    if (!supported) return { supported, pinSet, unlocked, ui: "unsupported" };
+    if (!pinSet) return { supported, pinSet, unlocked, ui: "offer" };
+    return { supported, pinSet, unlocked, ui: unlocked ? "ready" : "locked" };
+  }
+  var LOCKED_OUT_MESSAGE = "the device is locked \u2014 too many wrong PINs. Recovery is a factory reset from the management applet, which destroys every identity on the board.";
+  function createPinFlow() {
+    let view = { ui: "idle" };
+    let pending = null;
+    const show2 = (v) => (view = v) && v;
+    return {
+      get view() {
+        return view;
+      },
+      get pending() {
+        return pending;
+      },
+      /** Connect: the proactive read. A re-connect starts a fresh surface —
+       *  a pending op does not survive it (the session flag is device-side
+       *  and may have moved under us). */
+      connect(info) {
+        pending = null;
+        const state2 = parsePinState(info);
+        return show2({ ui: state2.ui, state: state2 });
+      },
+      /** The user accepted the first-connect banner. */
+      offerAccepted() {
+        if (view.ui !== "offer") return view;
+        return show2({ ui: "setting", state: view.state });
+      },
+      /** The user dismissed the banner. A PIN-less board is fully usable —
+       *  the gate never fires — so the surface is the ordinary one, and the
+       *  settings row still offers custody later. */
+      offerDismissed() {
+        if (view.ui !== "offer") return view;
+        return show2({ ui: "ready", state: view.state });
+      },
+      /** SET_PIN answered 9000. Setting is not unlocking: straight into the
+       *  verify dialog. */
+      setOk() {
+        if (view.ui !== "setting") return view;
+        return show2({ ui: "locked", attempts: 3, justSet: true, state: view.state });
+      },
+      /** SET_PIN answered SW_PIN_ALREADY_SET (0x6a82) — a stale surface.
+       *  Re-read at the next connect; meanwhile the dialog says so. */
+      setRefused() {
+        return show2({ ui: "locked", attempts: 3, stale: true, state: view.state });
+      },
+      /** A trusted op died with SW_PIN_SESSION_REQUIRED — the gate engaged.
+       *  The op is kept so the user never re-fills a form (op-resume). */
+      gated(method, args) {
+        pending = { method, args };
+        return show2({ ui: "locked", attempts: view.attempts ?? 3, gated: true, state: view.state });
+      },
+      /** VERIFY answered 9000: the session is open and the gated op resumes
+       *  — the caller re-issues `pending` untouched. */
+      verifyOk() {
+        const resume = pending;
+        pending = null;
+        return show2({ ui: "ready", resume, state: view.state });
+      },
+      /** VERIFY answered a refusal. 63Cn names the attempts left; 63C0 is the
+       *  floor — locked out, recovery stated plainly. */
+      verifySw(sw) {
+        if (sw === 25536) {
+          pending = null;
+          return show2({ ui: "locked-out", message: LOCKED_OUT_MESSAGE, state: view.state });
+        }
+        if ((sw & 65520) === 25536) {
+          const attempts = sw & 15;
+          return show2({ ui: "locked", attempts, gated: pending !== null, state: view.state });
+        }
+        return show2({ ui: "locked", error: sw, state: view.state });
+      },
+      /** LOCK answered 9000 — the session is closed again. */
+      lockOk() {
+        pending = null;
+        return show2({ ui: "locked", attempts: 3, state: view.state });
+      }
+    };
+  }
+
+  // src/popup/pin-screens.js
+  function pinRowModel(state2) {
+    if (!state2 || !state2.supported) return { kind: "hidden" };
+    if (!state2.pinSet) return { kind: "offer" };
+    return { kind: "manage", unlocked: state2.unlocked };
+  }
+  function lockIndicatorModel(state2) {
+    if (!state2 || !state2.supported || !state2.pinSet || !state2.unlocked) {
+      return { show: false, text: "" };
+    }
+    return { show: true, text: "unlocked \u2014 until the board restarts" };
+  }
+  function verifyModel(view, pendingMethod = null) {
+    if (view.ui === "locked-out") {
+      return {
+        headline: "the device is locked",
+        body: view.message ?? LOCKED_OUT_MESSAGE,
+        attemptsLeft: 0,
+        lockedOut: true
+      };
+    }
+    let headline;
+    let body;
+    if (view.justSet) {
+      headline = "PIN set";
+      body = "setting the PIN does not open the session \u2014 verify it now to unlock signing";
+    } else if (view.stale) {
+      headline = "a PIN is already set on this board";
+      body = "verify it instead \u2014 the device refused to set a second one";
+    } else if (view.gated && pendingMethod) {
+      headline = "your PIN is needed first";
+      body = `verify and the \u201C${pendingMethod}\u201D you started continues where it left off`;
+    } else {
+      headline = "verify your PIN";
+      body = "the PIN opens the signing session \u2014 it stays open until the board restarts";
+    }
+    return {
+      headline,
+      body,
+      attemptsLeft: view.attempts ?? null,
+      lockedOut: false
+    };
+  }
+  function manageModel(state2) {
+    return {
+      statusLine: state2.unlocked ? "the session is open" : "the session is locked",
+      canVerify: !state2.unlocked,
+      canLock: state2.unlocked
+    };
+  }
+  function setModel() {
+    return {
+      title: "Set a PIN",
+      body: "a PIN guards every key on the board: signing asks for it after each restart, and too many wrong tries lock the device. 6 to 64 characters."
+    };
+  }
+  function changeModel() {
+    return {
+      title: "Change PIN",
+      body: "the current PIN is verified first \u2014 a wrong one burns an attempt, exactly like a wrong unlock. Changing the PIN does not open or close the session. 6 to 64 characters."
+    };
+  }
+  function validatePin(pin) {
+    const bytes = new TextEncoder().encode(String(pin ?? ""));
+    if (bytes.length < 6 || bytes.length > 64) {
+      throw Object.assign(
+        new Error(`the PIN is ${bytes.length} bytes \u2014 the device takes 6 to 64`),
+        { name: "SignerError", code: "BAD_PIN" }
+      );
+    }
+    return bytes;
+  }
+  function validatePinChange(current, next, confirm) {
+    validatePin(current);
+    validatePin(next);
+    validatePin(confirm);
+    if (next !== confirm) {
+      throw Object.assign(new Error("the two new-PIN entries do not match"), {
+        name: "SignerError",
+        code: "BAD_PIN"
+      });
+    }
+  }
+
   // src/popup/popup.js
   var api = createPortClient();
   var $ = (id) => document.getElementById(id);
+  var SW_PIN_SESSION_REQUIRED = 27010;
+  var PIN_METHODS = /* @__PURE__ */ new Set(["verify_pin", "set_pin", "change_pin", "lock"]);
   var state = {
     keys: [],
     deviceState: "checking",
@@ -7207,14 +7384,21 @@
     // {idx, npub, label}
     labelTarget: null,
     exportTarget: null,
-    lastHealth: null
+    lastHealth: null,
     // persisted to storage.session so reopen is truthful
+    screen: "keys",
+    // US-1706 — where the verify dialog must return to
+    pinReturnScreen: "keys",
+    pinVerifyWait: null
+    // the suspended gated op's bridge, or null
   };
+  var pinFlow = createPinFlow();
   function show(screen) {
     document.querySelectorAll(".screen").forEach((s) => s.classList.remove("active"));
     $(`screen-${screen}`)?.classList.add("active");
     $("nav-keys").classList.toggle("active", screen === "keys");
     $("nav-sites").classList.toggle("active", screen === "sites");
+    state.screen = screen;
   }
   function notice(msg, cls = "") {
     const el = $("notice");
@@ -7226,6 +7410,31 @@
     $("touch-bar").classList.toggle("on", on);
     $("touch-text").textContent = text;
   }
+  function deviceCallNotice(err) {
+    const word = err.sw !== void 0 ? SW_WORDS[err.sw] : null;
+    if (err.sw === 27013) {
+      touch(false);
+      notice(word ?? err.message, "err");
+    } else {
+      notice(word ?? err.message ?? `${err.code ?? "error"}`, "err");
+    }
+  }
+  async function resumeThroughGate(originalErr, method, args) {
+    pinFlow.gated(method, args);
+    renderPinRow();
+    state.pinReturnScreen = state.screen;
+    openPinVerify();
+    const verified = await new Promise((resolve) => {
+      state.pinVerifyWait = resolve;
+    });
+    state.pinVerifyWait = null;
+    show(state.pinReturnScreen ?? "keys");
+    if (!verified) {
+      deviceCallNotice(originalErr);
+      throw originalErr;
+    }
+    return deviceCall(method, ...args);
+  }
   async function deviceCall(method, ...args) {
     const TOUCH_GATED = /* @__PURE__ */ new Set(["sign_event", "generate_key", "import_key", "delete_key", "set_label", "export_key", "nip44_encrypt", "nip44_decrypt"]);
     const gated = TOUCH_GATED.has(method);
@@ -7233,13 +7442,10 @@
     try {
       return await api.call(method, ...args);
     } catch (err) {
-      const word = err.sw !== void 0 ? SW_WORDS[err.sw] : null;
-      if (err.sw === 27013) {
-        touch(false);
-        notice(word ?? err.message, "err");
-      } else {
-        notice(word ?? err.message ?? `${err.code ?? "error"}`, "err");
+      if (err?.sw === SW_PIN_SESSION_REQUIRED && !PIN_METHODS.has(method)) {
+        return resumeThroughGate(err, method, args);
       }
+      deviceCallNotice(err);
       throw err;
     } finally {
       if (gated) touch(false);
@@ -7275,7 +7481,223 @@
       cardBtn.textContent = "Connect";
       cardBtn.setAttribute("aria-label", "Connect the board");
     }
+    applyPinInfo(h);
   }
+  function applyPinInfo(h) {
+    pinFlow.connect(h?.state === "connected" ? h.info ?? null : null);
+    renderPinRow();
+    renderLockIndicator();
+  }
+  function renderLockIndicator() {
+    const m = lockIndicatorModel(pinFlow.view.state);
+    const el = $("lock-indicator");
+    el.hidden = !m.show;
+    el.textContent = m.text;
+  }
+  function renderPinRow() {
+    const el = $("pin-row");
+    const m = pinRowModel(pinFlow.view.state);
+    el.hidden = m.kind === "hidden";
+    if (m.kind === "offer") {
+      el.innerHTML = `
+      <p class="muted">No PIN is set \u2014 a PIN guards every key on the board against a restart's open session.</p>
+      <div class="actions">
+        <button class="primary" data-pin-act="accept">Set a PIN</button>
+        <button class="ghost" data-pin-act="dismiss">Not now</button>
+      </div>`;
+    } else if (m.kind === "manage") {
+      el.innerHTML = `
+      <p class="muted">PIN custody on \u2014 ${m.unlocked ? "the session is open until the board restarts" : "the session is locked; signing asks for the PIN"}.</p>
+      <div class="actions">
+        <button class="ghost" data-pin-act="manage">Manage PIN</button>
+      </div>`;
+    } else {
+      el.innerHTML = "";
+    }
+  }
+  $("pin-row").addEventListener("click", (ev) => {
+    const btn = ev.target.closest("button[data-pin-act]");
+    if (!btn) return;
+    const act = btn.dataset.pinAct;
+    if (act === "accept") {
+      pinFlow.offerAccepted();
+      renderPinSet();
+      show("pin-set");
+    }
+    if (act === "dismiss") {
+      pinFlow.offerDismissed();
+      renderPinRow();
+    }
+    if (act === "manage") {
+      renderPinManage();
+      show("pin-manage");
+    }
+  });
+  function renderPinSet() {
+    const m = setModel();
+    $("pin-set-title").textContent = m.title;
+    $("pin-set-body").textContent = m.body;
+    $("pin-set-input").value = "";
+    $("pin-set-confirm").value = "";
+    $("pin-set-error").hidden = true;
+  }
+  function setScreenError(msg) {
+    const el = $("pin-set-error");
+    el.hidden = !msg;
+    el.textContent = msg ?? "";
+  }
+  $("pin-set-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const pin = $("pin-set-input").value;
+    try {
+      validatePin(pin);
+      if (pin !== $("pin-set-confirm").value) {
+        throw Object.assign(new Error("the two PIN entries do not match"), {
+          name: "SignerError",
+          code: "BAD_PIN"
+        });
+      }
+    } catch (err) {
+      setScreenError(err.message);
+      return;
+    }
+    setScreenError("");
+    try {
+      await deviceCall("set_pin", pin);
+    } catch (err) {
+      if (err?.sw === 27266) {
+        pinFlow.setRefused();
+        openPinVerify();
+      }
+      return;
+    }
+    pinFlow.setOk();
+    $("pin-set-input").value = "";
+    $("pin-set-confirm").value = "";
+    renderPinRow();
+    openPinVerify();
+  });
+  $("pin-set-cancel").addEventListener("click", () => {
+    setScreenError("");
+    show("keys");
+  });
+  function renderPinVerifyScreen() {
+    const m = verifyModel(pinFlow.view, pinFlow.pending?.method ?? null);
+    $("pin-verify-headline").textContent = m.headline;
+    $("pin-verify-body").textContent = m.body;
+    const attemptsEl = $("pin-verify-attempts");
+    attemptsEl.hidden = m.lockedOut || m.attemptsLeft == null;
+    attemptsEl.textContent = m.attemptsLeft != null ? `${m.attemptsLeft} attempt${m.attemptsLeft === 1 ? "" : "s"} left` : "";
+    $("pin-verify-btn").disabled = m.lockedOut;
+    $("pin-verify-input").disabled = m.lockedOut;
+    $("pin-verify-cancel").disabled = false;
+  }
+  function openPinVerify() {
+    state.pinReturnScreen = state.screen ?? "keys";
+    renderPinVerifyScreen();
+    show("pin-verify");
+  }
+  $("pin-verify-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    if (pinFlow.view.ui === "locked-out") return;
+    const input = $("pin-verify-input");
+    try {
+      await api.call("verify_pin", input.value);
+    } catch (verr) {
+      pinFlow.verifySw(verr.sw);
+      renderPinVerifyScreen();
+      if ((verr.sw & 65520) === 25536) input.value = "";
+      return;
+    }
+    pinFlow.verifyOk();
+    input.value = "";
+    renderPinRow();
+    renderLockIndicator();
+    const wait = state.pinVerifyWait;
+    if (wait) {
+      wait(true);
+      return;
+    }
+    notice("unlocked \u2014 signing works until the board restarts", "ok");
+    renderPinManage();
+    show("pin-manage");
+  });
+  $("pin-verify-cancel").addEventListener("click", () => {
+    $("pin-verify-input").value = "";
+    const wait = state.pinVerifyWait;
+    state.pinVerifyWait = null;
+    if (wait) {
+      wait(false);
+      return;
+    }
+    show("pin-manage");
+  });
+  function renderPinManage() {
+    const m = manageModel(pinFlow.view.state);
+    $("pin-manage-status").textContent = m.statusLine;
+    $("pin-manage-verify").hidden = !m.canVerify;
+    $("pin-manage-lock").hidden = !m.canLock;
+  }
+  $("pin-manage-verify").addEventListener("click", () => openPinVerify());
+  $("pin-manage-change").addEventListener("click", () => {
+    renderPinChange();
+    show("pin-change");
+  });
+  $("pin-manage-lock").addEventListener("click", async () => {
+    try {
+      await api.call("lock");
+    } catch (err) {
+      deviceCallNotice(err);
+      return;
+    }
+    pinFlow.lockOk();
+    renderPinRow();
+    renderLockIndicator();
+    renderPinManage();
+    notice("locked \u2014 signing asks for the PIN again after the board restarts", "ok");
+  });
+  $("pin-manage-back").addEventListener("click", () => show("keys"));
+  function renderPinChange() {
+    const m = changeModel();
+    $("pin-change-title").textContent = m.title;
+    $("pin-change-body").textContent = m.body;
+    for (const id of ["pin-change-current", "pin-change-new", "pin-change-confirm"]) {
+      $(id).value = "";
+    }
+    $("pin-change-error").hidden = true;
+  }
+  function changeScreenError(msg) {
+    const el = $("pin-change-error");
+    el.hidden = !msg;
+    el.textContent = msg ?? "";
+  }
+  $("pin-change-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const current = $("pin-change-current").value;
+    const next = $("pin-change-new").value;
+    try {
+      validatePinChange(current, next, $("pin-change-confirm").value);
+    } catch (err) {
+      changeScreenError(err.message);
+      return;
+    }
+    changeScreenError("");
+    try {
+      await deviceCall("change_pin", current, next);
+    } catch {
+      return;
+    }
+    $("pin-change-current").value = "";
+    $("pin-change-new").value = "";
+    $("pin-change-confirm").value = "";
+    notice("PIN changed \u2014 the session state did not move", "ok");
+    renderPinRow();
+    show("pin-manage");
+  });
+  $("pin-change-cancel").addEventListener("click", () => {
+    changeScreenError("");
+    show("pin-manage");
+  });
   async function healthCheck({ force = false } = {}) {
     let h = await pairing.health({ force });
     if (h.state === "busy") {

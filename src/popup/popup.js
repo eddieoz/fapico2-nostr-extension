@@ -25,9 +25,28 @@ import {
 import { homeScreenFor, homeActions, deviceCardModel, tryAgain } from './home-state.js';
 import { methodWords } from '../shared/method-words.js';
 import { createRevokeAllArmer } from './revoke-all.js';
+import { createPinFlow, pinUi } from '../worker/pin_flow.js';
+import {
+  pinRowModel,
+  lockIndicatorModel,
+  verifyModel,
+  manageModel,
+  setModel,
+  changeModel,
+  validatePin,
+  validatePinChange,
+} from './pin-screens.js';
 
 const api = createPortClient();
 const $ = (id) => document.getElementById(id);
+
+// US-1706 — the custody gate's word: a PIN-set board that restarted refuses
+// every gated op with it until VERIFY opens the session again.
+const SW_PIN_SESSION_REQUIRED = 0x6982;
+// US-1706 — the methods the custody gate covers on the firmware (sign and
+// the nip44 pair ride the provider, not this popup; the popup's own gated
+// set is what deviceCall can hit). The PIN verbs themselves never gate.
+const PIN_METHODS = new Set(['verify_pin', 'set_pin', 'change_pin', 'lock']);
 
 const state = {
   keys: [],
@@ -40,7 +59,14 @@ const state = {
   labelTarget: null,
   exportTarget: null,
   lastHealth: null, // persisted to storage.session so reopen is truthful
+  screen: 'keys', // US-1706 — where the verify dialog must return to
+  pinReturnScreen: 'keys',
+  pinVerifyWait: null, // the suspended gated op's bridge, or null
 };
+
+// US-1706 — the pin flow machine: the popup feeds it the GET_INFO body at
+// every health resolve and renders the surfaces its view names.
+const pinFlow = createPinFlow();
 
 // --- helpers -----------------------------------------------------------------
 
@@ -49,6 +75,9 @@ function show(screen) {
   $(`screen-${screen}`)?.classList.add('active');
   $('nav-keys').classList.toggle('active', screen === 'keys');
   $('nav-sites').classList.toggle('active', screen === 'sites');
+  // US-1706 — the verify dialog returns here when it closes; a gated op
+  // that hit the custody gate resumes on this screen.
+  state.screen = screen;
 }
 
 function notice(msg, cls = '') {
@@ -63,6 +92,42 @@ function touch(on, text = 'touch your device') {
   $('touch-text').textContent = text;
 }
 
+/** The typed failure's sentence, wherever it lands (US-1707's error map —
+ *  never a raw status word). Extracted so the gated-op cancel path can
+ *  report the original refusal exactly as deviceCall would have. */
+function deviceCallNotice(err) {
+  const word = err.sw !== undefined ? SW_WORDS[err.sw] : null;
+  if (err.sw === 0x6985) {
+    touch(false);
+    notice(word ?? err.message, 'err');
+  } else {
+    notice(word ?? err.message ?? `${err.code ?? 'error'}`, 'err');
+  }
+}
+
+/** US-1706 — the custody gate caught a gated op: open the verify dialog,
+ *  suspend the call on a promise bridge, and on a verified PIN re-issue the
+ *  SAME method and args so the caller's continuation runs untouched. The
+ *  touch, when the op is touch-gated, is still asked per re-issued attempt —
+ *  the PIN consents to the session, the touch to the operation. */
+async function resumeThroughGate(originalErr, method, args) {
+  pinFlow.gated(method, args);
+  renderPinRow();
+  // The verify dialog returns to the screen the gated op started on —
+  // a mid-form gate must put the user back on that form, not the home.
+  state.pinReturnScreen = state.screen;
+  openPinVerify();
+  const verified = await new Promise((resolve) => { state.pinVerifyWait = resolve; });
+  state.pinVerifyWait = null;
+  show(state.pinReturnScreen ?? 'keys');
+  if (!verified) {
+    // Cancelled: the original refusal stands, loudly — the op never ran.
+    deviceCallNotice(originalErr);
+    throw originalErr;
+  }
+  return deviceCall(method, ...args);
+}
+
 /** Every device call runs behind the touch bar when it is touch-gated. */
 async function deviceCall(method, ...args) {
   const TOUCH_GATED = new Set(['sign_event', 'generate_key', 'import_key', 'delete_key', 'set_label', 'export_key', 'nip44_encrypt', 'nip44_decrypt']);
@@ -71,13 +136,12 @@ async function deviceCall(method, ...args) {
   try {
     return await api.call(method, ...args);
   } catch (err) {
-    const word = err.sw !== undefined ? SW_WORDS[err.sw] : null;
-    if (err.sw === 0x6985) {
-      touch(false);
-      notice(word ?? err.message, 'err');
-    } else {
-      notice(word ?? err.message ?? `${err.code ?? 'error'}`, 'err');
+    // US-1706 — the custody gate: a PIN-set board that restarted refuses
+    // every gated op with 0x6982. The PIN verbs themselves never gate.
+    if (err?.sw === SW_PIN_SESSION_REQUIRED && !PIN_METHODS.has(method)) {
+      return resumeThroughGate(err, method, args);
     }
+    deviceCallNotice(err);
     throw err;
   } finally {
     if (gated) touch(false);
@@ -132,7 +196,264 @@ function renderDeviceCard(h) {
     cardBtn.textContent = 'Connect';
     cardBtn.setAttribute('aria-label', 'Connect the board');
   }
+  // US-1706 — the custody surfaces derive from the same answer that says
+  // "connected": the machine re-connects on every health resolve, so the
+  // row, the indicator and the offer track the board's real state.
+  applyPinInfo(h);
 }
+
+// --- PIN custody (US-1706/US-1707) --------------------------------------------
+
+/** US-1706 — feed the machine the health answer's GET_INFO body. Absent,
+ *  erroring, or bodyless boards degrade to null: every PIN surface hides. */
+function applyPinInfo(h) {
+  pinFlow.connect(h?.state === 'connected' ? h.info ?? null : null);
+  renderPinRow();
+  renderLockIndicator();
+}
+
+function renderLockIndicator() {
+  const m = lockIndicatorModel(pinFlow.view.state);
+  const el = $('lock-indicator');
+  el.hidden = !m.show;
+  el.textContent = m.text;
+}
+
+/** US-1706 — the keys-home row: offer vs manage, or nothing. The buttons
+ *  ride data-pin-act so the re-render never re-wires listeners. */
+function renderPinRow() {
+  const el = $('pin-row');
+  const m = pinRowModel(pinFlow.view.state);
+  el.hidden = m.kind === 'hidden';
+  if (m.kind === 'offer') {
+    el.innerHTML = `
+      <p class="muted">No PIN is set — a PIN guards every key on the board against a restart's open session.</p>
+      <div class="actions">
+        <button class="primary" data-pin-act="accept">Set a PIN</button>
+        <button class="ghost" data-pin-act="dismiss">Not now</button>
+      </div>`;
+  } else if (m.kind === 'manage') {
+    el.innerHTML = `
+      <p class="muted">PIN custody on — ${m.unlocked ? 'the session is open until the board restarts' : 'the session is locked; signing asks for the PIN'}.</p>
+      <div class="actions">
+        <button class="ghost" data-pin-act="manage">Manage PIN</button>
+      </div>`;
+  } else {
+    el.innerHTML = '';
+  }
+}
+
+$('pin-row').addEventListener('click', (ev) => {
+  const btn = ev.target.closest('button[data-pin-act]');
+  if (!btn) return;
+  const act = btn.dataset.pinAct;
+  if (act === 'accept') {
+    pinFlow.offerAccepted();
+    renderPinSet();
+    show('pin-set');
+  }
+  if (act === 'dismiss') {
+    // A PIN-less board is fully usable — the gate never fires — so the
+    // surface is the ordinary one and the row still offers custody later.
+    pinFlow.offerDismissed();
+    renderPinRow();
+  }
+  if (act === 'manage') {
+    renderPinManage();
+    show('pin-manage');
+  }
+});
+
+// --- PIN set (US-1706) ------------------------------------------------------------
+
+function renderPinSet() {
+  const m = setModel();
+  $('pin-set-title').textContent = m.title;
+  $('pin-set-body').textContent = m.body;
+  $('pin-set-input').value = '';
+  $('pin-set-confirm').value = '';
+  $('pin-set-error').hidden = true;
+}
+
+function setScreenError(msg) {
+  const el = $('pin-set-error');
+  el.hidden = !msg;
+  el.textContent = msg ?? '';
+}
+
+$('pin-set-form').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const pin = $('pin-set-input').value;
+  try {
+    validatePin(pin);
+    if (pin !== $('pin-set-confirm').value) {
+      throw Object.assign(new Error('the two PIN entries do not match'), {
+        name: 'SignerError', code: 'BAD_PIN',
+      });
+    }
+  } catch (err) {
+    setScreenError(err.message);
+    return;
+  }
+  setScreenError('');
+  try {
+    await deviceCall('set_pin', pin);
+  } catch (err) {
+    // 6A82 on a SET is the stale-surface answer: the board already has a
+    // PIN, so the flow becomes a verify. Everything else was noticed.
+    if (err?.sw === 0x6a82) {
+      pinFlow.setRefused();
+      openPinVerify();
+    }
+    return;
+  }
+  // Setting is not unlocking: straight into the verify dialog.
+  pinFlow.setOk();
+  $('pin-set-input').value = '';
+  $('pin-set-confirm').value = '';
+  renderPinRow();
+  openPinVerify();
+});
+$('pin-set-cancel').addEventListener('click', () => {
+  setScreenError('');
+  show('keys');
+});
+
+// --- PIN verify (US-1706) -----------------------------------------------------------
+
+/** US-1706 — the verify dialog, driven by the machine's view. `pendingMethod`
+ *  names the gated op when the dialog is up mid-operation. */
+function renderPinVerifyScreen() {
+  const m = verifyModel(pinFlow.view, pinFlow.pending?.method ?? null);
+  $('pin-verify-headline').textContent = m.headline;
+  $('pin-verify-body').textContent = m.body;
+  const attemptsEl = $('pin-verify-attempts');
+  attemptsEl.hidden = m.lockedOut || m.attemptsLeft == null;
+  attemptsEl.textContent = m.attemptsLeft != null ? `${m.attemptsLeft} attempt${m.attemptsLeft === 1 ? '' : 's'} left` : '';
+  $('pin-verify-btn').disabled = m.lockedOut;
+  $('pin-verify-input').disabled = m.lockedOut;
+  $('pin-verify-cancel').disabled = false;
+}
+
+/** Open the dialog, remembering where to return. The gated path awaits the
+ *  promise bridge; the proactive path resolves immediately. */
+function openPinVerify() {
+  state.pinReturnScreen = state.screen ?? 'keys';
+  renderPinVerifyScreen();
+  show('pin-verify');
+}
+
+$('pin-verify-form').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  if (pinFlow.view.ui === 'locked-out') return; // no attempt can succeed
+  const input = $('pin-verify-input');
+  try {
+    await api.call('verify_pin', input.value);
+  } catch (verr) {
+    pinFlow.verifySw(verr.sw); // 63Cn → attempts; 63C0 → locked-out; else error view
+    renderPinVerifyScreen();
+    if ((verr.sw & 0xfff0) === 0x63c0) input.value = ''; // the wrong PIN is scrubbed
+    return; // stay on the dialog for the remaining attempts
+  }
+  pinFlow.verifyOk();
+  input.value = '';
+  renderPinRow();
+  renderLockIndicator();
+  const wait = state.pinVerifyWait;
+  if (wait) {
+    wait(true); // the suspended deviceCall restores the screen and re-issues
+    return;
+  }
+  notice('unlocked — signing works until the board restarts', 'ok');
+  renderPinManage();
+  show('pin-manage');
+});
+
+$('pin-verify-cancel').addEventListener('click', () => {
+  $('pin-verify-input').value = '';
+  const wait = state.pinVerifyWait;
+  state.pinVerifyWait = null;
+  if (wait) {
+    wait(false); // resumeThroughGate restores the screen and reports the refusal
+    return;
+  }
+  show('pin-manage');
+});
+
+// --- PIN manage (US-1707) ------------------------------------------------------------
+
+function renderPinManage() {
+  const m = manageModel(pinFlow.view.state);
+  $('pin-manage-status').textContent = m.statusLine;
+  $('pin-manage-verify').hidden = !m.canVerify;
+  $('pin-manage-lock').hidden = !m.canLock;
+}
+
+$('pin-manage-verify').addEventListener('click', () => openPinVerify());
+$('pin-manage-change').addEventListener('click', () => {
+  renderPinChange();
+  show('pin-change');
+});
+$('pin-manage-lock').addEventListener('click', async () => {
+  try {
+    await api.call('lock');
+  } catch (err) {
+    deviceCallNotice(err);
+    return;
+  }
+  pinFlow.lockOk();
+  renderPinRow();
+  renderLockIndicator();
+  renderPinManage();
+  notice('locked — signing asks for the PIN again after the board restarts', 'ok');
+});
+$('pin-manage-back').addEventListener('click', () => show('keys'));
+
+// --- PIN change (US-1706) ------------------------------------------------------------
+
+function renderPinChange() {
+  const m = changeModel();
+  $('pin-change-title').textContent = m.title;
+  $('pin-change-body').textContent = m.body;
+  for (const id of ['pin-change-current', 'pin-change-new', 'pin-change-confirm']) {
+    $(id).value = '';
+  }
+  $('pin-change-error').hidden = true;
+}
+
+function changeScreenError(msg) {
+  const el = $('pin-change-error');
+  el.hidden = !msg;
+  el.textContent = msg ?? '';
+}
+
+$('pin-change-form').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const current = $('pin-change-current').value;
+  const next = $('pin-change-new').value;
+  try {
+    validatePinChange(current, next, $('pin-change-confirm').value);
+  } catch (err) {
+    changeScreenError(err.message);
+    return;
+  }
+  changeScreenError('');
+  try {
+    await deviceCall('change_pin', current, next);
+  } catch {
+    return; /* the notice carries the named failure (a wrong current burns an attempt) */
+  }
+  $('pin-change-current').value = '';
+  $('pin-change-new').value = '';
+  $('pin-change-confirm').value = '';
+  notice('PIN changed — the session state did not move', 'ok');
+  renderPinRow();
+  show('pin-manage');
+});
+$('pin-change-cancel').addEventListener('click', () => {
+  changeScreenError('');
+  show('pin-manage');
+});
 
 async function healthCheck({ force = false } = {}) {
   let h = await pairing.health({ force });
