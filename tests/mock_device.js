@@ -48,6 +48,9 @@ export class MockDevice {
     this.pin = null;
     this.retries = 3;
     this.unlocked = false;
+    // The custody ceremony (US-1716): the mock starts migration-complete;
+    // a test opts a board into the pending state via `ceremonyPending`.
+    this.ceremonyPending = false;
     // The GET_INFO body (US-1706): applet_ver ‖ caps ‖ max_plaintext ‖
     // n ‖ flags — a custody-generation board with no PIN by default.
     this.info = { appletVer: [0x00, 0x02], caps: 0x0007, maxPlaintext: 0x0700, nIdentities: this.keys.length, flags: 0x00 };
@@ -117,12 +120,44 @@ export class MockDevice {
         this.unlocked = false;
         return { sw: SW.OK, data: new Uint8Array(0) };
       }
+      case NOSTR_CMD.IMPORT_KEY: {
+        // US-1717's round trip drives the import path: arg = scalar(32),
+        // answer = npub(32). An occupied slot is the file-full word.
+        if (this.keys.some((k) => k.idx === idx)) {
+          return { sw: 0x6a84, data: new Uint8Array(0) };
+        }
+        if (arg.length !== 32) return { sw: SW.WRONG_DATA, data: new Uint8Array(0) };
+        const pub = hexToBytes(getPublicKey(arg));
+        this.keys.push({ idx, scalar: arg.slice(), pub, label: 'test copy' });
+        return { sw: SW.OK, data: pub.slice() };
+      }
+      case NOSTR_CMD.DELETE_KEY: {
+        const del = this.keys.findIndex((k) => k.idx === idx);
+        if (del === -1) return { sw: 0x6a82, data: new Uint8Array(0) };
+        const [gone] = this.keys.splice(del, 1);
+        return { sw: SW.OK, data: gone.pub.slice() };
+      }
+      case NOSTR_CMD.CEREMONY_START: {
+        // US-1716: the applet's refusal gates, in order — no PIN (6A82),
+        // nothing to migrate or already sealed (6F02), else 9000 with
+        // migrated(2 BE) ‖ already(2 BE): every identity walked, the PIN
+        // record counted separately. Completion clears the pending bit.
+        if (this.pin == null) return { sw: 0x6a82, data: new Uint8Array(0) };
+        if (!this.ceremonyPending) return { sw: SW.CEREMONY_NOT_NEEDED, data: new Uint8Array(0) };
+        this.ceremonyPending = false;
+        const body = new Uint8Array(4);
+        body[0] = (this.keys.length >> 8) & 0xff;
+        body[1] = this.keys.length & 0xff;
+        body[3] = 0x01; // the PIN record, migrated already
+        return { sw: SW.OK, data: body };
+      }
       case NOSTR_CMD.PING: {
         // INS_GET_INFO: applet_ver(2) ‖ caps(2) ‖ max_plaintext(2) ‖
         // n(1) ‖ flags(1); flags mirrors the PIN state (bit0 set, bit1 the
-        // unlocked session).
+        // unlocked session) and bit2 the pending migration (US-1714 —
+        // pending implies the PIN is set, so the mock requires both).
         const i = this.info;
-        const flags = (i.flags & ~0x03) | (this.pin != null ? 0x01 : 0x00) | (this.unlocked ? 0x02 : 0x00);
+        const flags = (i.flags & ~0x03) | (this.pin != null ? 0x01 : 0x00) | (this.unlocked ? 0x02 : 0x00) | (this.pin != null && this.ceremonyPending ? 0x04 : 0x00);
         const data = new Uint8Array(8);
         data[0] = i.appletVer[0];
         data[1] = i.appletVer[1];

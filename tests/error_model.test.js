@@ -15,9 +15,10 @@ import { serializeBridgeError, reviveBridgeError } from '../src/core/window_nost
 import { DeviceAbsentError } from '../src/core/loudness.js';
 
 test('US-1707 the mapping table covers every word in the D13 vocabulary', () => {
-  // 13 distinct words cross the transport (the fixture pins them — the PIN
-  // custody words 0x6982 and 0x63c0 joined at US-1705); the map has a row
-  // for each — 0x9000 included, so a spurious OK sentence cannot hide.
+  // 15 distinct words cross the transport (the fixture pins them — the PIN
+  // custody words 0x6982 and 0x63c0 joined at US-1705, the ceremony words
+  // 0x6f01 and 0x6f02 at US-1714); the map has a row for each — 0x9000
+  // included, so a spurious OK sentence cannot hide.
   const words = new Set(Object.values(WIRE));
   for (const sw of words) {
     assert.ok(describeSw(sw).known, `0x${sw.toString(16)} must have a row`);
@@ -26,7 +27,7 @@ test('US-1707 the mapping table covers every word in the D13 vocabulary', () => 
       `the sentence for 0x${sw.toString(16)} says something`,
     );
   }
-  assert.equal(words.size, 13);
+  assert.equal(words.size, 15);
 });
 
 test('US-1707 the table-driven rows: each SW maps to its named sentence', () => {

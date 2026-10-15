@@ -55,6 +55,10 @@ export const NOSTR_CMD = {
   VERIFY_PIN: 0x4b,
   SET_PIN: 0x4c,
   LOCK: 0x4d,
+  // US-1714/US-1716 — the custody ceremony. The consent is the dialog,
+  // not a touch: the applet is neither touch-gated nor session-gated, and
+  // the run is the irreversible thing the dialog discloses.
+  CEREMONY_START: 0x4e,
 };
 
 // The D13 status vocabulary, as it crosses the transport: the vendor CBOR
@@ -72,6 +76,15 @@ export const SW = {
   // are one word.
   PIN_SESSION_REQUIRED: 0x6982,
   PIN_LOCKED: 0x63c0,
+  // The custody-ceremony vocabulary (US-1714): 0x6F01 is the sealed board
+  // whose custody store cannot be opened this boot — RAM-only, every
+  // command refused until the recovery ladder runs; 0x6F02 is the
+  // ceremony's "nothing to do" (no PIN, no sealed records, or already
+  // sealed). 0x6F00 on a ceremony run is the interrupted-retryable state —
+  // the error map carries a ceremony-specific sentence for it, never the
+  // store-fault phrasing (US-1717).
+  SEALED_UNAVAILABLE: 0x6f01,
+  CEREMONY_NOT_NEEDED: 0x6f02,
 };
 
 export const BROADCAST_CID = new Uint8Array([0xff, 0xff, 0xff, 0xff]);

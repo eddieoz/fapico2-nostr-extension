@@ -27,6 +27,23 @@
   };
 
   // src/worker/error-map.js
+  var RECOVERY_LADDER = [
+    {
+      step: 1,
+      title: "power cycle",
+      body: "unplug the board, leave it off for 5 seconds, then plug it back in"
+    },
+    {
+      step: 2,
+      title: "re-flash the current release",
+      body: "re-flash the current fapico2 release image over BOOTSEL \u2014 this does not touch the identities on the board"
+    },
+    {
+      step: 3,
+      title: "factory reset \u2014 last resort",
+      body: "only then a factory reset from the management applet: imported identities come back from your backup file; generated identities are gone permanently"
+    }
+  ];
   var SW_ERROR_MAP = {
     36864: { code: "OK", message: "ok" },
     27264: { code: "SW_WRONG_DATA", message: "the device refused the data \u2014 it could not read the request" },
@@ -58,8 +75,26 @@
     27010: {
       code: "SW_PIN_SESSION_REQUIRED",
       message: "the device requires its PIN before this operation \u2014 verify to continue"
+    },
+    // The custody-ceremony rows (US-1714/US-1717). 0x6F01 is the sealed
+    // board: the custody store could not be opened this boot, the applet
+    // answers every command from RAM only, and the recovery ladder below is
+    // the sentence's body — stepped, because RESET is never a co-equal
+    // button beside the power-cycle advice.
+    28417: {
+      code: "SW_SEALED_UNAVAILABLE",
+      message: "the device is sealed \u2014 its protected store could not be opened this boot, so nothing on it can be read or signed. Follow the recovery steps in order:",
+      ladder: RECOVERY_LADDER
+    },
+    // 0x6F02 is the ceremony's "nothing to do" — no PIN, no sealed records,
+    // or already sealed (US-1715: the refusal gates, in the order a user can
+    // act on them).
+    28418: {
+      code: "SW_CEREMONY_NOT_NEEDED",
+      message: "the migration has nothing to do here \u2014 the board has no protected identities to seal, or they are already sealed"
     }
   };
+  var CEREMONY_INTERRUPTED_SENTENCE = "the sealing ceremony was interrupted partway through \u2014 what it finished is kept, and running it again completes it. Re-plug the board and open the extension to continue.";
   function describeSw(sw) {
     const known = SW_ERROR_MAP[sw];
     if (known) return { ...known, known: true };
@@ -219,7 +254,11 @@
     // CHANGE (verify-the-current-PIN ceremony).
     VERIFY_PIN: 75,
     SET_PIN: 76,
-    LOCK: 77
+    LOCK: 77,
+    // US-1714/US-1716 — the custody ceremony. The consent is the dialog,
+    // not a touch: the applet is neither touch-gated nor session-gated, and
+    // the run is the irreversible thing the dialog discloses.
+    CEREMONY_START: 78
   };
   var SW = {
     OK: 36864,
@@ -234,7 +273,16 @@
     // range a wrong PIN answers with: the lockout and "no attempts left"
     // are one word.
     PIN_SESSION_REQUIRED: 27010,
-    PIN_LOCKED: 25536
+    PIN_LOCKED: 25536,
+    // The custody-ceremony vocabulary (US-1714): 0x6F01 is the sealed board
+    // whose custody store cannot be opened this boot — RAM-only, every
+    // command refused until the recovery ladder runs; 0x6F02 is the
+    // ceremony's "nothing to do" (no PIN, no sealed records, or already
+    // sealed). 0x6F00 on a ceremony run is the interrupted-retryable state —
+    // the error map carries a ceremony-specific sentence for it, never the
+    // store-fault phrasing (US-1717).
+    SEALED_UNAVAILABLE: 28417,
+    CEREMONY_NOT_NEEDED: 28418
   };
   var BROADCAST_CID = new Uint8Array([255, 255, 255, 255]);
   var DEFAULT_TIMEOUT_MS = 3e4;
@@ -7681,6 +7729,30 @@
       lock: async () => {
         await runOk(NOSTR_CMD.LOCK, 0, new Uint8Array(0));
         return {};
+      },
+      // --- the custody ceremony (US-1715/US-1716) — trusted-only: the
+      // consent dialog is the consent, and it lives in the popup. The applet
+      // is neither touch-gated nor session-gated, and the button is not
+      // needed during the run.
+      ceremony_start: async () => {
+        const { sw, data } = await device.run(NOSTR_CMD.CEREMONY_START, 0, new Uint8Array(0));
+        if (sw === SW.OK) {
+          if (data.length < 4) {
+            throw Object.assign(new Error("CEREMONY_START answered 9000 with a short body"), {
+              name: "SignerError",
+              code: "DEVICE_REPLY_MALFORMED"
+            });
+          }
+          return { migrated: data[0] << 8 | data[1], already: data[2] << 8 | data[3] };
+        }
+        if (sw === SW.STORE_FAULT) {
+          throw Object.assign(new Error(CEREMONY_INTERRUPTED_SENTENCE), {
+            name: "CeremonyInterruptedError",
+            code: "CEREMONY_INTERRUPTED",
+            sw
+          });
+        }
+        throw new SwError("CEREMONY_START", sw);
       },
       export_key: async ([slot]) => {
         if (!Number.isInteger(slot) || slot < 0 || slot > 7) {

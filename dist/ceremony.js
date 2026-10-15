@@ -27,7 +27,11 @@
     // CHANGE (verify-the-current-PIN ceremony).
     VERIFY_PIN: 75,
     SET_PIN: 76,
-    LOCK: 77
+    LOCK: 77,
+    // US-1714/US-1716 — the custody ceremony. The consent is the dialog,
+    // not a touch: the applet is neither touch-gated nor session-gated, and
+    // the run is the irreversible thing the dialog discloses.
+    CEREMONY_START: 78
   };
   var SW = {
     OK: 36864,
@@ -42,7 +46,16 @@
     // range a wrong PIN answers with: the lockout and "no attempts left"
     // are one word.
     PIN_SESSION_REQUIRED: 27010,
-    PIN_LOCKED: 25536
+    PIN_LOCKED: 25536,
+    // The custody-ceremony vocabulary (US-1714): 0x6F01 is the sealed board
+    // whose custody store cannot be opened this boot — RAM-only, every
+    // command refused until the recovery ladder runs; 0x6F02 is the
+    // ceremony's "nothing to do" (no PIN, no sealed records, or already
+    // sealed). 0x6F00 on a ceremony run is the interrupted-retryable state —
+    // the error map carries a ceremony-specific sentence for it, never the
+    // store-fault phrasing (US-1717).
+    SEALED_UNAVAILABLE: 28417,
+    CEREMONY_NOT_NEEDED: 28418
   };
   var BROADCAST_CID = new Uint8Array([255, 255, 255, 255]);
   var DEFAULT_TIMEOUT_MS = 3e4;

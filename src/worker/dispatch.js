@@ -45,6 +45,10 @@ export const TRUSTED_ONLY_METHODS = new Set([
   'set_pin',
   'change_pin',
   'lock',
+  // The custody ceremony (US-1716) — the consent dialog is the consent,
+  // and it lives in the extension UI; a tab sender never drives the
+  // irreversible verb.
+  'ceremony_start',
 ]);
 
 /** The Flamingo sender gate, original implementation. */

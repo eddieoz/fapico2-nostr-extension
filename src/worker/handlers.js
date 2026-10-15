@@ -12,7 +12,7 @@ import { FapicoSigner, FapicoNip44, SwError, SignerError } from '../core/seams.j
 import { NOSTR_CMD, SW } from '../core/ctaphid.js';
 import { parseInfoBody } from './pin_flow.js';
 import { DeviceAbsentError } from '../core/loudness.js';
-import { errSentence } from './error-map.js';
+import { errSentence, CEREMONY_INTERRUPTED_SENTENCE } from './error-map.js';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
 
 /** The PIN's wire bytes: 6..64, the applet's payload shape (US-1691). */
@@ -261,6 +261,43 @@ export function createHandlers({
     lock: async () => {
       await runOk(NOSTR_CMD.LOCK, 0, new Uint8Array(0));
       return {};
+    },
+
+    // --- the custody ceremony (US-1715/US-1716) — trusted-only: the
+    // consent dialog is the consent, and it lives in the popup. The applet
+    // is neither touch-gated nor session-gated, and the button is not
+    // needed during the run.
+    ceremony_start: async () => {
+      // US-1716's serialization gate is structural: device.run is the
+      // fully serialized queue, so this job is atomic with respect to every
+      // other vendor request — queued operations settle strictly after the
+      // ceremony's last frame, and no second request reaches the firmware
+      // mid-run (the device would answer 6985 immediately).
+      const { sw, data } = await device.run(NOSTR_CMD.CEREMONY_START, 0, new Uint8Array(0));
+      if (sw === SW.OK) {
+        // The body is migrated(2 BE) ‖ already(2 BE) — the applet's own
+        // counts of what the reseat moved.
+        if (data.length < 4) {
+          throw Object.assign(new Error('CEREMONY_START answered 9000 with a short body'), {
+            name: 'SignerError', code: 'DEVICE_REPLY_MALFORMED',
+          });
+        }
+        return { migrated: (data[0] << 8) | data[1], already: (data[2] << 8) | data[3] };
+      }
+      if (sw === SW.STORE_FAULT) {
+        // US-1717 — a 0x6F00 on a ceremony run is interrupted-retryable,
+        // never the store-fault sentence ("its store faulted" promises a
+        // hardware failure that did not happen). The retry is offered
+        // through the consent dialog at the next connect.
+        throw Object.assign(new Error(CEREMONY_INTERRUPTED_SENTENCE), {
+          name: 'CeremonyInterruptedError',
+          code: 'CEREMONY_INTERRUPTED',
+          sw,
+        });
+      }
+      // 0x6F02 (nothing to do), 0x6F01 (sealed), and everything else cross
+      // typed with the word — the error map carries each sentence.
+      throw new SwError('CEREMONY_START', sw);
     },
 
     export_key: async ([slot]) => {
