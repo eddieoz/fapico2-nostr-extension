@@ -26,12 +26,12 @@ export const CAP_CEREMONY = 0x0008;
  *  the old image, and the ceremony has something to do. */
 export const FLAG_MIGRATION_PENDING = 0x04;
 
-// The duration bound printed in the dialog. **This is a conservative upper
-// bound, not a measurement** — no hardware timing of the ceremony exists
-// yet. It covers the whole burn + re-seat walk (8 identities + the PIN
-// record, a 3-retry burn budget) with room. The hardware session
-// (US-1718's matrix) transcribes the measured bound; replace this number
-// with it, and keep it an upper bound either way.
+// The duration bound printed in the dialog. **A conservative upper bound,
+// not the measurement** — the hardware session (US-1718's matrix,
+// fapico2 docs/audits/2026-10-15-nostr-downgrade-matrix.md) measured 0.62 s
+// for the completing run on real board hardware, so 60 s keeps ~96×
+// headroom. Kept as an upper bound on purpose: a virgin-page ceremony adds
+// the nine OTP burns, and slower board variants get the same dialog.
 export const CEREMONY_BOUND_SECONDS = 60;
 
 // The one user-facing threat-model sentence (US-1716). The ceilings
