@@ -1,7 +1,7 @@
 // US-1716/US-1717 — the ceremony flow: the consent state machine, the
 // disclosure order, the elapsed timer against the stated bound, the
-// serialization gate, every new status word's sentence, the stepped
-// recovery ladder, and the verify-before-flash export round trip.
+// serialization gate, every new status word's sentence, and the stepped
+// recovery ladder.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -22,11 +22,6 @@ import {
   RECOVERY_LADDER,
   CEREMONY_INTERRUPTED_SENTENCE,
 } from '../src/worker/error-map.js';
-import {
-  verifyExportRoundTrip,
-  firstFreeSlot,
-  ROUND_TRIP_ADVICE,
-} from '../src/worker/export_roundtrip.js';
 import { createHandlers } from '../src/worker/handlers.js';
 import { createDeviceOwner } from '../src/worker/device.js';
 import { MockDevice, hexToBytes, bytesToHex } from './mock_device.js';
@@ -275,50 +270,3 @@ test('US-1717 the recovery ladder is stepped and RESET is never co-equal', () =>
   assert.match(reset.body, /generated identities are gone permanently/);
 });
 
-// --- the export round trip against the emulator -----------------------------
-
-test('US-1717 the round trip: import test copy, confirm pubkeys match, DELETE the test copy', async () => {
-  const { mock } = rig();
-  const scalar = hexToBytes('11'.repeat(32));
-  const npubHex = bytesToHex(mock.pub(0));
-  const r = await verifyExportRoundTrip({ run: (c, i, a) => mock.vendor(c, i, a) }, { scalarHex: bytesToHex(scalar), npubHex });
-  assert.equal(r.verified, true);
-  assert.match(r.advice, /two copies/);
-  assert.match(r.advice, /two different media/);
-  assert.equal(mock.keys.length, 2, 'the test copy is gone — the board is back to its two identities');
-  assert.equal(mock.calls.filter((c) => c.cmd === NOSTR_CMD.DELETE_KEY).length, 1);
-});
-
-test('US-1717 a mismatched export is typed ROUND_TRIP_MISMATCH and cleans up the test copy', async () => {
-  const { mock } = rig();
-  const wrong = hexToBytes('33'.repeat(32));
-  await assert.rejects(
-    () => verifyExportRoundTrip({ run: (c, i, a) => mock.vendor(c, i, a) }, { scalarHex: bytesToHex(wrong), npubHex: bytesToHex(mock.pub(0)) }),
-    (err) => err.code === 'ROUND_TRIP_MISMATCH' && /do not flash/i.test(err.message),
-  );
-  assert.equal(mock.keys.length, 2, 'the test copy did not survive its own mismatch');
-});
-
-test('US-1717 a full board refuses the round trip before anything is written', async () => {
-  const { mock } = rig();
-  mock.keys = [0, 1, 2, 3, 4, 5, 6, 7].map((idx) => ({ idx, scalar: hexToBytes('44'.repeat(32)), pub: hexToBytes('55'.repeat(32)), label: '' }));
-  await assert.rejects(
-    () => verifyExportRoundTrip({ run: (c, i, a) => mock.vendor(c, i, a) }, { scalarHex: '11'.repeat(32), npubHex: bytesToHex(mock.pub(0)) }),
-    (err) => err.code === 'ROUND_TRIP_NO_SLOT' && /do not flash yet/i.test(err.message),
-  );
-  assert.equal(
-    mock.calls.filter((c) => c.cmd === NOSTR_CMD.IMPORT_KEY).length,
-    0,
-    'no import frame was sent — the refusal happens first',
-  );
-});
-
-test('US-1717 firstFreeSlot reads LIST_KEYS\' own shape and skips occupied slots', () => {
-  const data = new Uint8Array([
-    2, // n
-    0, 0x00, ...hexToBytes('aa'.repeat(32)), 4, 0x6b, 0x65, 0x79, 0x30, // idx 0
-    3, 0x00, ...hexToBytes('bb'.repeat(32)), 0, // idx 3, empty label
-  ]);
-  assert.equal(firstFreeSlot(data), 1);
-  assert.equal(firstFreeSlot(new Uint8Array([0])), 0, 'an empty board takes slot 0');
-});

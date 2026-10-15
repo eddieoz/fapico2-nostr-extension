@@ -7760,19 +7760,6 @@
         }
         throw new SwError("CEREMONY_START", sw);
       },
-      export_key: async ([slot]) => {
-        if (!Number.isInteger(slot) || slot < 0 || slot > 7) {
-          throw Object.assign(new Error("slot must be 0..7"), { name: "SignerError", code: "BAD_SLOT" });
-        }
-        const data = await runOk(NOSTR_CMD.EXPORT_KEY, slot, new Uint8Array(0));
-        if (data.length < 32) {
-          throw Object.assign(new Error("EXPORT_KEY answered 9000 without a scalar"), {
-            name: "SignerError",
-            code: "DEVICE_REPLY_MALFORMED"
-          });
-        }
-        return { scalar: bytesToHex(data.subarray(0, 32)) };
-      },
       get_grants: async () => listGrants(),
       revoke_grant: async ([host]) => revoke(host),
       revoke_all: async () => revoke(null),

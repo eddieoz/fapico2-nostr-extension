@@ -99,8 +99,105 @@
     };
   }
 
-  // node_modules/.pnpm/@scure+base@1.2.6/node_modules/@scure/base/lib/esm/index.js
+  // src/popup/pairing.js
+  var VENDOR_FILTER = { usagePage: 65280, usage: 1 };
+  function createPairing({ requestDevice, call, persist = () => {
+  }, now: now2 = () => Date.now() }) {
+    let lastProbeAt = 0;
+    let lastHealth = null;
+    return {
+      /** The Connect flow — call from the click handler only. */
+      async connect() {
+        const devices = await requestDevice({ filters: [VENDOR_FILTER] });
+        if (!devices || devices.length === 0) {
+          const err = new Error("no device selected");
+          err.name = "NotFoundError";
+          throw err;
+        }
+        const res = await call("pair_device");
+        lastHealth = res.state === "connected" ? { state: "connected", info: res.info ?? null } : { state: "error", message: res.message };
+        persist(lastHealth);
+        return lastHealth;
+      },
+      /** Touch-free PING, rate-limited. Returns the device-card state. */
+      async health({ force = false } = {}) {
+        const t = now2();
+        if (!force && t - lastProbeAt < 1e3) return lastHealth;
+        lastProbeAt = t;
+        try {
+          const res = await call("device_status");
+          lastHealth = res.state === "connected" ? { state: "connected", info: res.info ?? null } : res.state === "busy" ? { state: "busy" } : res.code === "DEVICE_ABSENT" ? { state: "absent" } : { state: "error", message: res.message };
+        } catch (err) {
+          lastHealth = { state: "error", message: err.message };
+        }
+        persist(lastHealth);
+        return lastHealth;
+      },
+      get lastHealth() {
+        return lastHealth;
+      }
+    };
+  }
+
+  // node_modules/.pnpm/@noble+hashes@1.8.0/node_modules/@noble/hashes/esm/utils.js
   function isBytes(a) {
+    return a instanceof Uint8Array || ArrayBuffer.isView(a) && a.constructor.name === "Uint8Array";
+  }
+  function abytes(b, ...lengths) {
+    if (!isBytes(b))
+      throw new Error("Uint8Array expected");
+    if (lengths.length > 0 && !lengths.includes(b.length))
+      throw new Error("Uint8Array expected of length " + lengths + ", got length=" + b.length);
+  }
+  var hasHexBuiltin = /* @__PURE__ */ (() => (
+    // @ts-ignore
+    typeof Uint8Array.from([]).toHex === "function" && typeof Uint8Array.fromHex === "function"
+  ))();
+  var hexes = /* @__PURE__ */ Array.from({ length: 256 }, (_, i2) => i2.toString(16).padStart(2, "0"));
+  function bytesToHex(bytes) {
+    abytes(bytes);
+    if (hasHexBuiltin)
+      return bytes.toHex();
+    let hex = "";
+    for (let i2 = 0; i2 < bytes.length; i2++) {
+      hex += hexes[bytes[i2]];
+    }
+    return hex;
+  }
+  var asciis = { _0: 48, _9: 57, A: 65, F: 70, a: 97, f: 102 };
+  function asciiToBase16(ch) {
+    if (ch >= asciis._0 && ch <= asciis._9)
+      return ch - asciis._0;
+    if (ch >= asciis.A && ch <= asciis.F)
+      return ch - (asciis.A - 10);
+    if (ch >= asciis.a && ch <= asciis.f)
+      return ch - (asciis.a - 10);
+    return;
+  }
+  function hexToBytes(hex) {
+    if (typeof hex !== "string")
+      throw new Error("hex string expected, got " + typeof hex);
+    if (hasHexBuiltin)
+      return Uint8Array.fromHex(hex);
+    const hl = hex.length;
+    const al = hl / 2;
+    if (hl % 2)
+      throw new Error("hex string expected, got unpadded hex of length " + hl);
+    const array = new Uint8Array(al);
+    for (let ai = 0, hi = 0; ai < al; ai++, hi += 2) {
+      const n1 = asciiToBase16(hex.charCodeAt(hi));
+      const n2 = asciiToBase16(hex.charCodeAt(hi + 1));
+      if (n1 === void 0 || n2 === void 0) {
+        const char = hex[hi] + hex[hi + 1];
+        throw new Error('hex string expected, got non-hex character "' + char + '" at index ' + hi);
+      }
+      array[ai] = n1 * 16 + n2;
+    }
+    return array;
+  }
+
+  // node_modules/.pnpm/@scure+base@1.2.6/node_modules/@scure/base/lib/esm/index.js
+  function isBytes2(a) {
     return a instanceof Uint8Array || ArrayBuffer.isView(a) && a.constructor.name === "Uint8Array";
   }
   function isArrayOf(isString, arr) {
@@ -244,7 +341,7 @@
       throw new Error("radix2: carry overflow");
     return {
       encode: (bytes) => {
-        if (!isBytes(bytes))
+        if (!isBytes2(bytes))
           throw new Error("radix2.encode input should be Uint8Array");
         return convertRadix2(Array.from(bytes), 8, bits, !revPadding);
       },
@@ -302,7 +399,7 @@
     const fromWordsUnsafe = unsafeWrapper(fromWords);
     function encode(prefix, words, limit = 90) {
       astr("bech32.encode prefix", prefix);
-      if (isBytes(words))
+      if (isBytes2(words))
         words = Array.from(words);
       anumArr("bech32.encode", words);
       const plen = prefix.length;
@@ -356,103 +453,6 @@
     };
   }
   var bech32 = /* @__PURE__ */ genBech32("bech32");
-
-  // src/popup/pairing.js
-  var VENDOR_FILTER = { usagePage: 65280, usage: 1 };
-  function createPairing({ requestDevice, call, persist = () => {
-  }, now: now2 = () => Date.now() }) {
-    let lastProbeAt = 0;
-    let lastHealth = null;
-    return {
-      /** The Connect flow — call from the click handler only. */
-      async connect() {
-        const devices = await requestDevice({ filters: [VENDOR_FILTER] });
-        if (!devices || devices.length === 0) {
-          const err = new Error("no device selected");
-          err.name = "NotFoundError";
-          throw err;
-        }
-        const res = await call("pair_device");
-        lastHealth = res.state === "connected" ? { state: "connected", info: res.info ?? null } : { state: "error", message: res.message };
-        persist(lastHealth);
-        return lastHealth;
-      },
-      /** Touch-free PING, rate-limited. Returns the device-card state. */
-      async health({ force = false } = {}) {
-        const t = now2();
-        if (!force && t - lastProbeAt < 1e3) return lastHealth;
-        lastProbeAt = t;
-        try {
-          const res = await call("device_status");
-          lastHealth = res.state === "connected" ? { state: "connected", info: res.info ?? null } : res.state === "busy" ? { state: "busy" } : res.code === "DEVICE_ABSENT" ? { state: "absent" } : { state: "error", message: res.message };
-        } catch (err) {
-          lastHealth = { state: "error", message: err.message };
-        }
-        persist(lastHealth);
-        return lastHealth;
-      },
-      get lastHealth() {
-        return lastHealth;
-      }
-    };
-  }
-
-  // node_modules/.pnpm/@noble+hashes@1.8.0/node_modules/@noble/hashes/esm/utils.js
-  function isBytes2(a) {
-    return a instanceof Uint8Array || ArrayBuffer.isView(a) && a.constructor.name === "Uint8Array";
-  }
-  function abytes(b, ...lengths) {
-    if (!isBytes2(b))
-      throw new Error("Uint8Array expected");
-    if (lengths.length > 0 && !lengths.includes(b.length))
-      throw new Error("Uint8Array expected of length " + lengths + ", got length=" + b.length);
-  }
-  var hasHexBuiltin = /* @__PURE__ */ (() => (
-    // @ts-ignore
-    typeof Uint8Array.from([]).toHex === "function" && typeof Uint8Array.fromHex === "function"
-  ))();
-  var hexes = /* @__PURE__ */ Array.from({ length: 256 }, (_, i2) => i2.toString(16).padStart(2, "0"));
-  function bytesToHex(bytes) {
-    abytes(bytes);
-    if (hasHexBuiltin)
-      return bytes.toHex();
-    let hex = "";
-    for (let i2 = 0; i2 < bytes.length; i2++) {
-      hex += hexes[bytes[i2]];
-    }
-    return hex;
-  }
-  var asciis = { _0: 48, _9: 57, A: 65, F: 70, a: 97, f: 102 };
-  function asciiToBase16(ch) {
-    if (ch >= asciis._0 && ch <= asciis._9)
-      return ch - asciis._0;
-    if (ch >= asciis.A && ch <= asciis.F)
-      return ch - (asciis.A - 10);
-    if (ch >= asciis.a && ch <= asciis.f)
-      return ch - (asciis.a - 10);
-    return;
-  }
-  function hexToBytes(hex) {
-    if (typeof hex !== "string")
-      throw new Error("hex string expected, got " + typeof hex);
-    if (hasHexBuiltin)
-      return Uint8Array.fromHex(hex);
-    const hl = hex.length;
-    const al = hl / 2;
-    if (hl % 2)
-      throw new Error("hex string expected, got unpadded hex of length " + hl);
-    const array = new Uint8Array(al);
-    for (let ai = 0, hi = 0; ai < al; ai++, hi += 2) {
-      const n1 = asciiToBase16(hex.charCodeAt(hi));
-      const n2 = asciiToBase16(hex.charCodeAt(hi + 1));
-      if (n1 === void 0 || n2 === void 0) {
-        const char = hex[hi] + hex[hi + 1];
-        throw new Error('hex string expected, got non-hex character "' + char + '" at index ' + hi);
-      }
-      array[ai] = n1 * 16 + n2;
-    }
-    return array;
-  }
 
   // node_modules/.pnpm/@noble+hashes@2.0.1/node_modules/@noble/hashes/utils.js
   function isBytes3(a) {
@@ -7383,7 +7383,6 @@
     deleteTarget: null,
     // {idx, npub, label}
     labelTarget: null,
-    exportTarget: null,
     lastHealth: null,
     // persisted to storage.session so reopen is truthful
     screen: "keys",
@@ -7436,7 +7435,7 @@
     return deviceCall(method, ...args);
   }
   async function deviceCall(method, ...args) {
-    const TOUCH_GATED = /* @__PURE__ */ new Set(["sign_event", "generate_key", "import_key", "delete_key", "set_label", "export_key", "nip44_encrypt", "nip44_decrypt"]);
+    const TOUCH_GATED = /* @__PURE__ */ new Set(["sign_event", "generate_key", "import_key", "delete_key", "set_label", "nip44_encrypt", "nip44_decrypt"]);
     const gated = TOUCH_GATED.has(method);
     if (gated) touch(true);
     try {
@@ -7797,7 +7796,6 @@
         <span class="key-actions">
           <button type="button" data-act="copy" data-idx="${r.idx}" title="Copy npub to clipboard">copy</button>
           <button data-act="label" data-idx="${r.idx}" title="Set label">label</button>
-          <button data-act="export" data-idx="${r.idx}" title="Export key">export</button>
           <button data-act="delete" data-idx="${r.idx}" title="Delete key">delete</button>
         </span>
       </div>`;
@@ -7832,7 +7830,6 @@
     if (btn.dataset.act === "copy") return copyNpub(row);
     if (btn.dataset.act === "delete") openDelete(row);
     if (btn.dataset.act === "label") openLabel(row);
-    if (btn.dataset.act === "export") openExport(row);
   });
   $("keys-list").addEventListener("change", async (ev) => {
     const input = ev.target.closest('input[name="active-key"]');
@@ -7999,50 +7996,6 @@
     }
   });
   $("label-cancel").addEventListener("click", () => show("keys"));
-  function openExport(row) {
-    state.exportTarget = row;
-    $("export-what").innerHTML = `Export the secret of <code>${npubBech32(row.pubkey).slice(0, 20)}\u2026</code> (slot ${row.idx}).`;
-    $("export-understand").checked = false;
-    $("export-confirm").disabled = true;
-    $("export-out").hidden = true;
-    show("export");
-  }
-  $("export-understand").addEventListener("change", (ev) => {
-    $("export-confirm").disabled = !ev.target.checked;
-  });
-  $("export-confirm").addEventListener("click", async () => {
-    const row = state.exportTarget;
-    if (!row) return;
-    try {
-      const { scalar } = await deviceCall("export_key", row.idx);
-      $("export-out").hidden = false;
-      $("export-scalar").textContent = bech32.encode(
-        "nsec",
-        bech32.toWords((() => {
-          const out = new Uint8Array(32);
-          for (let i2 = 0; i2 < 32; i2++) out[i2] = parseInt(scalar.slice(i2 * 2, i2 * 2 + 2), 16);
-          return out;
-        })())
-      );
-      notice("");
-    } catch {
-    }
-  });
-  async function copyScalar() {
-    const nsec = $("export-scalar").textContent;
-    if (!nsec) return;
-    try {
-      await navigator.clipboard.writeText(nsec);
-      notice("Copied to clipboard");
-    } catch {
-      notice("could not copy \u2014 select the text and copy it by hand");
-    }
-  }
-  $("export-copy").addEventListener("click", () => copyScalar());
-  $("export-cancel").addEventListener("click", () => {
-    $("export-scalar").textContent = "";
-    show("keys");
-  });
   async function loadSites() {
     const list = $("sites-list");
     try {
@@ -8145,13 +8098,13 @@
 })();
 /*! Bundled license information:
 
-@scure/base/lib/esm/index.js:
-@scure/base/index.js:
-  (*! scure-base - MIT License (c) 2022 Paul Miller (paulmillr.com) *)
-
 @noble/hashes/esm/utils.js:
 @noble/hashes/utils.js:
   (*! noble-hashes - MIT License (c) 2022 Paul Miller (paulmillr.com) *)
+
+@scure/base/lib/esm/index.js:
+@scure/base/index.js:
+  (*! scure-base - MIT License (c) 2022 Paul Miller (paulmillr.com) *)
 
 @noble/curves/utils.js:
 @noble/curves/abstract/modular.js:

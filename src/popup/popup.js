@@ -10,7 +10,6 @@
 // opens a chooser.
 
 import { createPortClient } from '../shared/port-client.js';
-import { bech32 } from '@scure/base';
 import { createPairing } from './pairing.js';
 import {
   renderKeysModel,
@@ -25,7 +24,7 @@ import {
 import { homeScreenFor, homeActions, deviceCardModel, tryAgain } from './home-state.js';
 import { methodWords } from '../shared/method-words.js';
 import { createRevokeAllArmer } from './revoke-all.js';
-import { createPinFlow, pinUi } from '../worker/pin_flow.js';
+import { createPinFlow } from '../worker/pin_flow.js';
 import {
   pinRowModel,
   lockIndicatorModel,
@@ -57,7 +56,6 @@ const state = {
   import: null, // {scalarHex, npubHex}
   deleteTarget: null, // {idx, npub, label}
   labelTarget: null,
-  exportTarget: null,
   lastHealth: null, // persisted to storage.session so reopen is truthful
   screen: 'keys', // US-1706 — where the verify dialog must return to
   pinReturnScreen: 'keys',
@@ -130,7 +128,7 @@ async function resumeThroughGate(originalErr, method, args) {
 
 /** Every device call runs behind the touch bar when it is touch-gated. */
 async function deviceCall(method, ...args) {
-  const TOUCH_GATED = new Set(['sign_event', 'generate_key', 'import_key', 'delete_key', 'set_label', 'export_key', 'nip44_encrypt', 'nip44_decrypt']);
+  const TOUCH_GATED = new Set(['sign_event', 'generate_key', 'import_key', 'delete_key', 'set_label', 'nip44_encrypt', 'nip44_decrypt']);
   const gated = TOUCH_GATED.has(method);
   if (gated) touch(true);
   try {
@@ -597,7 +595,6 @@ async function loadKeys() {
         <span class="key-actions">
           <button type="button" data-act="copy" data-idx="${r.idx}" title="Copy npub to clipboard">copy</button>
           <button data-act="label" data-idx="${r.idx}" title="Set label">label</button>
-          <button data-act="export" data-idx="${r.idx}" title="Export key">export</button>
           <button data-act="delete" data-idx="${r.idx}" title="Delete key">delete</button>
         </span>
       </div>`;
@@ -642,7 +639,6 @@ $('keys-list').addEventListener('click', (ev) => {
   if (btn.dataset.act === 'copy') return copyNpub(row);
   if (btn.dataset.act === 'delete') openDelete(row);
   if (btn.dataset.act === 'label') openLabel(row);
-  if (btn.dataset.act === 'export') openExport(row);
 });
 
 // US-1710 — the radio: instant (no device touch), confirmed before the UI
@@ -835,58 +831,6 @@ $('label-confirm').addEventListener('click', async () => {
   } catch { /* notice carries the named failure */ }
 });
 $('label-cancel').addEventListener('click', () => show('keys'));
-
-// --- export (US-1706/D5) ------------------------------------------------------------------
-
-function openExport(row) {
-  state.exportTarget = row;
-  $('export-what').innerHTML = `Export the secret of <code>${npubBech32(row.pubkey).slice(0, 20)}…</code> (slot ${row.idx}).`;
-  $('export-understand').checked = false;
-  $('export-confirm').disabled = true;
-  $('export-out').hidden = true;
-  show('export');
-}
-$('export-understand').addEventListener('change', (ev) => {
-  $('export-confirm').disabled = !ev.target.checked;
-});
-$('export-confirm').addEventListener('click', async () => {
-  const row = state.exportTarget;
-  if (!row) return;
-  try {
-    const { scalar } = await deviceCall('export_key', row.idx);
-    // The explicit reveal: once, in this window, dropped on close — the
-    // scalar is rendered as nsec bech32 so a user can paste it into a
-    // software client, and nowhere else.
-    $('export-out').hidden = false;
-    $('export-scalar').textContent = bech32.encode(
-      'nsec',
-      bech32.toWords((() => {
-        const out = new Uint8Array(32);
-        for (let i = 0; i < 32; i++) out[i] = parseInt(scalar.slice(i * 2, i * 2 + 2), 16);
-        return out;
-      })()),
-    );
-    notice('');
-  } catch { /* notice carries the named failure */ }
-});
-/** US-1730 — copy the revealed nsec from the click gesture. The scrub rule
- *  extends here: on a rejected copy the notice is a fixed typed string — never
- *  the secret — so a failed copy leaks nothing. */
-async function copyScalar() {
-  const nsec = $('export-scalar').textContent;
-  if (!nsec) return;
-  try {
-    await navigator.clipboard.writeText(nsec);
-    notice('Copied to clipboard');
-  } catch {
-    notice('could not copy — select the text and copy it by hand');
-  }
-}
-$('export-copy').addEventListener('click', () => copyScalar());
-$('export-cancel').addEventListener('click', () => {
-  $('export-scalar').textContent = '';
-  show('keys');
-});
 
 // --- sites (US-1701) -----------------------------------------------------------------------
 

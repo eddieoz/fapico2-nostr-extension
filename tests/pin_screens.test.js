@@ -213,3 +213,20 @@ test('US-1706 a failed change_pin cannot reach the success notice (the catch ret
   assert.ok(catchIdx >= 0 && noticeIdx > catchIdx, 'the notice follows the device call');
   assert.ok(/catch\s*\{[^}]*return;/.test(body), 'the device-call catch returns before the success path');
 });
+
+// --- the export removal (US-1699) -------------------------------------------
+
+test('US-1699 no export surface remains: the screen, the row button, the flow, the handler, the verb, the module', async () => {
+  assert.ok(!/screen-export|export-what|export-confirm|export-scalar/.test(html), 'popup.html carries no export UI');
+  assert.ok(!/openExport|copyScalar|export_key|exportTarget/.test(src), 'popup.js carries no export flow');
+  const dispatch = await read('src/worker/dispatch.js');
+  assert.ok(!/'export_key'/.test(dispatch), 'dispatch no longer accepts export_key');
+  const handlers = await read('src/worker/handlers.js');
+  assert.ok(!/export_key:|EXPORT_KEY/.test(handlers), 'handlers no longer build export_key');
+  const roundtrip = await readFile(join(root, 'src/worker/export_roundtrip.js'), 'utf8').then(
+    () => 'present', (e) => (e.code === 'ENOENT' ? 'gone' : 'present'),
+  );
+  assert.equal(roundtrip, 'gone', 'the dead export_roundtrip module is deleted');
+  const keysTest = await read('tests/keys_screen.test.js');
+  assert.ok(!/export-confirm|US-1730|'export_key'/.test(keysTest), 'no export pins remain');
+});

@@ -55,11 +55,19 @@ test('US-1692 the echo canary answers a trusted extension-page sender', async ()
 
 test('US-1692 an unknown method is rejected unsupported-method, never a silent no-op', async () => {
   const { dispatch } = testDispatch();
-  const reply = await dispatch({ id: 2, method: 'export_key', args: [] }, trustedSender);
+  // export_key was retired with the export feature (US-1699) — it rides the
+  // unsupported-method path now, which is itself a useful probe.
+  const reply = await dispatch({ id: 2, method: 'no_such_verb', args: [] }, trustedSender);
   assert.equal(reply.id, 2);
   assert.equal(reply.error.code, 'unsupported-method');
   assert.equal(reply.error.name, 'UnsupportedMethodError');
   assert.ok(reply.error.message.length > 0);
+});
+
+test('US-1692 the retired export_key verb is unsupported-method, not a silent pass-through', async () => {
+  const { dispatch } = testDispatch();
+  const reply = await dispatch({ id: 2, method: 'export_key', args: [] }, trustedSender);
+  assert.equal(reply.error.code, 'unsupported-method', 'the removal did not leave a dispatchable stub');
 });
 
 test('US-1692 a page-allowed method called from an extension-page sender still works', async () => {

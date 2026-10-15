@@ -116,20 +116,6 @@
       </div>
     </section>
 
-    <!-- EXPORT -->
-    <section class="screen" id="screen-export" aria-label="Export key">
-      <h2 class="screen-title">Export key</h2>
-      <p class="muted" id="export-what"></p>
-      <p class="muted" id="export-removed" hidden>this firmware cannot export; keys were exportable only before the custody change</p>
-      <p class="muted"><b>Export shows the secret scalar once, in this window only.</b> It is never stored. Anyone who reads it owns the identity.</p>
-      <label class="check"><input type="checkbox" id="export-understand"> I understand this reveals the secret.</label>
-      <div class="actions">
-        <button id="export-confirm" class="primary amber" disabled>Reveal &amp; touch</button>
-        <button id="export-cancel" class="ghost">Back</button>
-      </div>
-      <div id="export-out" hidden><div class="reveal-row"><p class="reveal" id="export-scalar"></p><button id="export-copy" type="button" class="ghost">Copy</button></div><p class="muted">Erase this from view when done — the popup drops it on close.</p></div>
-    </section>
-
     <!-- PIN SET (US-1706) — the offer accepted. Local validation runs here;
          the device enforces the same 6..64-byte rule and answers 6A82 if a
          PIN already exists. Setting is not unlocking: the flow continues

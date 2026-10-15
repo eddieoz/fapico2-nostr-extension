@@ -38,9 +38,9 @@ test('US-1707 INFO_FLAGS bit1 is the lock indicator; bit0 drives the settings ro
   assert.match(UNLOCKED_HINT, /until the board restarts/);
 });
 
-test('US-1707 the GENERATE flow keeps the no-backup warning, and the export screen carries the notice', async () => {
+test('US-1707 the GENERATE flow keeps the no-backup warning (the export screen is removed)', async () => {
   const here = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'popup');
   const html = await readFile(join(here, 'popup.html'), 'utf8');
   assert.match(html, /cannot be backed up; it lives only on the device/);
-  assert.match(html, /keys were exportable only before the custody change/);
+  assert.ok(!/export-removed|Reveal & touch/.test(html), 'no export UI remains in the popup');
 });

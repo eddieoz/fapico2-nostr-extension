@@ -32,7 +32,6 @@ export const TRUSTED_ONLY_METHODS = new Set([
   'import_key',
   'delete_key',
   'set_label',
-  'export_key',
   'get_grants',
   'revoke_grant',
   'revoke_all',
