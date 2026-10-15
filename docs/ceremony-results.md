@@ -5,6 +5,24 @@ the six ordered steps, their status words and timings, the operator, and
 the board/firmware it ran against. A partial pass is not a pass — an
 incomplete entry stays open at the top until a complete one supersedes it.
 
+## PASSED — 2026-10-15, US-1706/US-1707 PIN custody: the full flow on hardware (feat/nostr-pin)
+
+**Board:** fapico2, operator eddieoz — every custody decision on the real
+board, end to end.
+**Extension:** `feat/nostr-pin` dist — the PIN custody stack: the GET_INFO
+crossing (pair_device/device_status), the popup screens, the gated-op
+verify-then-resume in deviceCall, and export removed (the export-capable
+line is frozen at tag v0.2.0).
+
+**Operator-reported, end to end PASS:** the custody flow ran on hardware —
+the offer/set path with the mandatory follow-up verify (setting is not
+unlocking), signing through the 0x6982 gate with the interrupted operation
+resuming after verify, PIN change against the durable counter, and lock.
+Machine gate green at the tested tree (`pnpm run check` + the CDP smoke
+run). No wire bytes changed on this branch (the PIN verbs were already
+fixture-pinned); the PIN verbs are touch-free — the PIN is the consent —
+so no touch-ceremony steps are owed.
+
 ## PASSED — 2026-10-13, US-1734 UX-journey gate: the full journey on hardware (feat/nostr, post-fix stack)
 
 **Board:** fapico2, USB `FA20:0002` ("The BLOCO Community fapico2"),
