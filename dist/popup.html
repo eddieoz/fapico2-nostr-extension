@@ -58,7 +58,7 @@
     <!-- GENERATE -->
     <section class="screen" id="screen-generate" aria-label="Generate key">
       <h2 class="screen-title">Generate key</h2>
-      <p class="muted">Pick an empty slot. Generation happens on the device and needs a touch. A generated key can only be removed with Delete — there is no undo.</p>
+      <p class="muted">Pick an empty slot. Generation happens on the device and needs a touch. A generated key can only be removed with Delete — there is no undo. This identity cannot be backed up; it lives only on the device.</p>
       <div class="slot-picker" id="gen-slots"></div>
       <div class="actions">
         <button id="gen-confirm" class="primary amber" disabled>Generate &amp; touch</button>
@@ -113,6 +113,7 @@
     <section class="screen" id="screen-export" aria-label="Export key">
       <h2 class="screen-title">Export key</h2>
       <p class="muted" id="export-what"></p>
+      <p class="muted" id="export-removed" hidden>this firmware cannot export; keys were exportable only before the custody change</p>
       <p class="muted"><b>Export shows the secret scalar once, in this window only.</b> It is never stored. Anyone who reads it owns the identity.</p>
       <label class="check"><input type="checkbox" id="export-understand"> I understand this reveals the secret.</label>
       <div class="actions">

@@ -48,6 +48,25 @@ export function parsePinState(info) {
   return { supported, pinSet, unlocked, ui: unlocked ? 'ready' : 'locked' };
 }
 
+// US-1707 — the capability-gated UI states. The v0.2.0 generation carries
+// no CAP_PIN_MGMT: every PIN surface hides, and its export flow still works
+// — the removal notice belongs to custody boards, where EXPORT_KEY answers
+// 6D00 in band.
+export const EXPORT_REMOVED_NOTICE =
+  'this firmware cannot export; keys were exportable only before the custody change';
+export const UNLOCKED_HINT = 'unlocked — until the board restarts';
+
+export function pinUi(info) {
+  const state = parsePinState(info);
+  const showPinUi = state.supported;
+  const exportNotice = state.supported ? EXPORT_REMOVED_NOTICE : null;
+  const lockIndicator =
+    state.supported && state.pinSet && state.unlocked ? UNLOCKED_HINT : null;
+  const settingsRow =
+    !state.supported ? null : state.pinSet ? 'manage' : 'offer';
+  return { state, showPinUi, exportNotice, lockIndicator, settingsRow };
+}
+
 /** The lockout sentence: recovery is management RESET, stated plainly —
  *  every identity on the board dies with it. */
 export const LOCKED_OUT_MESSAGE =
