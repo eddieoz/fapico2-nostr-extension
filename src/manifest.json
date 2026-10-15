@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "fapico2 Nostr",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Hardware-first Nostr signing: keys live on the fapico2 board, consent is a physical touch.",
   "minimum_chrome_version": "116",
   "permissions": [
