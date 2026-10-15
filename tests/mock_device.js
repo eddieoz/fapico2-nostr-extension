@@ -43,6 +43,11 @@ export class MockDevice {
     this._grants = grants;
     this.lastParked = null;
     this.calls = [];
+    // The PIN custody state (US-1705): a durable retry budget of 3, an
+    // unlocked flag the mock models per-instance.
+    this.pin = null;
+    this.retries = 3;
+    this.unlocked = false;
   }
 
   setGrants(on) {
@@ -68,6 +73,47 @@ export class MockDevice {
     }
 
     switch (cmd) {
+      // The PIN custody dialect (US-1691..1694, US-1702) — the mock's
+      // model of apps/nostr: verifier-free (a plain compare is enough for
+      // a mock), durable counter 63C0|remaining, lockout at the floor.
+      case NOSTR_CMD.VERIFY_PIN: {
+        const pin = new TextDecoder().decode(arg);
+        if (this.pin == null) return { sw: 0x6a82, data: new Uint8Array(0) };
+        if (this.retries === 0) return { sw: SW.PIN_LOCKED, data: new Uint8Array(0) };
+        if (pin !== this.pin) {
+          this.retries -= 1;
+          return { sw: 0x63c0 | this.retries, data: new Uint8Array(0) };
+        }
+        this.retries = 3;
+        this.unlocked = true;
+        return { sw: SW.OK, data: new Uint8Array(0) };
+      }
+      case NOSTR_CMD.SET_PIN: {
+        const d = new TextDecoder();
+        if (idx === 0) {
+          if (this.pin != null) return { sw: 0x6a82, data: new Uint8Array(0) };
+          this.pin = d.decode(arg);
+          this.retries = 3;
+          return { sw: SW.OK, data: new Uint8Array(0) };
+        }
+        // idx 1 = CHANGE: `lc ‖ current ‖ new`.
+        const lc = arg[0];
+        const cur = d.decode(arg.subarray(1, 1 + lc));
+        const nxt = d.decode(arg.subarray(1 + lc));
+        if (this.pin == null) return { sw: 0x6a82, data: new Uint8Array(0) };
+        if (this.retries === 0) return { sw: SW.PIN_LOCKED, data: new Uint8Array(0) };
+        if (cur !== this.pin) {
+          this.retries -= 1;
+          return { sw: 0x63c0 | this.retries, data: new Uint8Array(0) };
+        }
+        this.pin = nxt;
+        this.retries = 3;
+        return { sw: SW.OK, data: new Uint8Array(0) };
+      }
+      case NOSTR_CMD.LOCK: {
+        this.unlocked = false;
+        return { sw: SW.OK, data: new Uint8Array(0) };
+      }
       case NOSTR_CMD.GET_PUBKEY: {
         // §2.2: npub(32) ‖ bech32_npub(63).
         const k = this._key(idx);

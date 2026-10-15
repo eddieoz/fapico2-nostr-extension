@@ -39,6 +39,12 @@ export const TRUSTED_ONLY_METHODS = new Set([
   'prompt_decision',
   'get_active_slot',
   'set_active_slot',
+  // The PIN custody verbs (US-1705) — extension-UI only: a page must never
+  // learn the PIN's existence, let alone submit one.
+  'verify_pin',
+  'set_pin',
+  'change_pin',
+  'lock',
 ]);
 
 /** The Flamingo sender gate, original implementation. */

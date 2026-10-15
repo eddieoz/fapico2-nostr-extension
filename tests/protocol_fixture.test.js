@@ -85,12 +85,54 @@ test('US-1690 src/core is byte-identical to the OpenXrypt d431b00 originals exce
     ],
   };
 
+  // The declared insertions: blocks the ported core ADDS over the
+  // original, with the reason named — the same reviewed-divergence rule
+  // the allow-list enforces for changed lines. Each entry is spliced out
+  // of `now` before the verbatim loop, so the loop (and the line-numbered
+  // allow-list) keeps working unchanged, and the block itself is asserted
+  // to be exactly where it is declared.
+  const declaredInsertions = {
+    'ctaphid.js': [
+      {
+        at: 50, // after the original NOSTR_CMD's SET_LABEL row
+        reason: 'US-1705 — the PIN custody verbs on the vendor dialect',
+        lines: [
+          '  // The PIN custody dialect (US-1691..1694, US-1702) — touch-free by',
+          '  // design: the PIN is the consent. SET_PIN\'s envelope idx rides P1 on',
+          '  // the device, so 0 selects SET (establish custody) and 1 selects',
+          '  // CHANGE (verify-the-current-PIN ceremony).',
+          '  VERIFY_PIN: 0x4b,',
+          '  SET_PIN: 0x4c,',
+          '  LOCK: 0x4d,',
+        ],
+      },
+      {
+        at: 67, // after the original SW's STORE_FAULT row (60, +7 from the NOSTR_CMD insertion)
+        reason: 'US-1705 — the PIN custody vocabulary (6982, 63c0)',
+        lines: [
+          '  // The PIN custody vocabulary (US-1691). PIN_NOT_SET shares 0x6a82 with',
+          '  // the file-not-found word — the same state word, read by context; the',
+          '  // error map carries the sentence. 63c0 is the bottom of the same 63CX',
+          '  // range a wrong PIN answers with: the lockout and "no attempts left"',
+          '  // are one word.',
+          '  PIN_SESSION_REQUIRED: 0x6982,',
+          '  PIN_LOCKED: 0x63c0,',
+        ],
+      },
+    ],
+  };
+
   for (const name of await readdir(coreDir)) {
     if (!name.endsWith('.js')) continue;
     const orig = await readFile(join(origDir, name), 'utf8');
     const now = await readFile(join(coreDir, name), 'utf8');
     const origLines = orig.split('\n');
-    const nowLines = now.split('\n');
+    let nowLines = now.split('\n');
+    for (const ins of (declaredInsertions[name] ?? []).slice().sort((a, b) => b.at - a.at)) {
+      const found = ins.lines.every((l, k) => nowLines[ins.at + k] === l);
+      assert.ok(found, `${name}: the declared insertion at ${ins.at} (${ins.reason}) is not verbatim`);
+      nowLines.splice(ins.at, ins.lines.length);
+    }
     assert.equal(nowLines.length, origLines.length, `${name}: line count diverged — the port is not verbatim`);
     const allowed = allowList[name] ?? [];
     const diffs = [];
@@ -121,12 +163,13 @@ test('US-1690 the status vocabulary matches the firmware wire fixture', () => {
   for (const [name, sw] of Object.entries(CORE_SW)) {
     assert.equal(sw, FIXTURE_SW[name], `SW.${name} drifted from the fixture`);
   }
-  // The full D13 vocabulary the firmware can emit (the fixture's list) is
-  // what the error model (US-1707) must cover end to end. 11 distinct words;
-  // the fixture carries 12 keys because 0x6985 is named twice (the firmware's
-  // SW_TOUCH_REQUIRED and the core's CONDITIONS_NOT_SATISFIED alias).
+  // The full vocabulary the firmware can emit (the fixture's list) is what
+  // the error model (US-1707) must cover end to end. 13 distinct words since
+  // the PIN custody dialect (0x6982, 0x63c0; the fixture carries 14 keys
+  // because 0x6985 is named twice — the firmware's SW_TOUCH_REQUIRED and the
+  // core's CONDITIONS_NOT_SATISFIED alias).
   assert.ok(FIXTURE_SW.OK === 0x9000 && FIXTURE_SW.TOUCH_REQUIRED === 0x6985);
-  assert.equal(new Set(Object.values(FIXTURE_SW)).size, 11, 'the D13 vocabulary is 11 words');
+  assert.equal(new Set(Object.values(FIXTURE_SW)).size, 13, 'the vocabulary is 13 distinct words');
 });
 
 test('US-1690 the vendor surface is usage 0xFF00:0x01 with the pinned framing constants', () => {

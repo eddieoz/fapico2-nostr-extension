@@ -14,6 +14,18 @@ import { DeviceAbsentError } from '../core/loudness.js';
 import { errSentence } from './error-map.js';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
 
+/** The PIN's wire bytes: 6..64, the applet's payload shape (US-1691). */
+function pinBytes(pin) {
+  const bytes = new TextEncoder().encode(pin);
+  if (bytes.length < 6 || bytes.length > 64) {
+    throw Object.assign(new Error('the PIN is 6..64 characters'), {
+      name: 'SignerError',
+      code: 'BAD_PIN',
+    });
+  }
+  return bytes;
+}
+
 export function createHandlers({
   device,
   consent = async ({ method }) => ({ remember: false }),
@@ -213,6 +225,37 @@ export function createHandlers({
         });
       }
       await runOk(NOSTR_CMD.SET_LABEL, slot, bytes);
+      return {};
+    },
+
+    // --- PIN custody (US-1705) — touch-free: the PIN is the consent ----
+    verify_pin: async ([pin]) => {
+      await runOk(NOSTR_CMD.VERIFY_PIN, 0, pinBytes(pin));
+      return {};
+    },
+
+    set_pin: async ([pin]) => {
+      // P1 0 = SET; the device answers 6A82 on a PIN-set board (the error
+      // map names the state).
+      await runOk(NOSTR_CMD.SET_PIN, 0, pinBytes(pin));
+      return {};
+    },
+
+    change_pin: async ([current, next]) => {
+      // The applet's CHANGE payload: `lc(1) ‖ current(lc) ‖ new` — the
+      // length byte makes the split unambiguous.
+      const cur = pinBytes(current);
+      const nxt = pinBytes(next);
+      const arg = new Uint8Array(1 + cur.length + nxt.length);
+      arg[0] = cur.length;
+      arg.set(cur, 1);
+      arg.set(nxt, 1 + cur.length);
+      await runOk(NOSTR_CMD.SET_PIN, 1, arg);
+      return {};
+    },
+
+    lock: async () => {
+      await runOk(NOSTR_CMD.LOCK, 0, new Uint8Array(0));
       return {};
     },
 
