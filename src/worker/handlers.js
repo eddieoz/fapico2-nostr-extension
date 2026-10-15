@@ -10,9 +10,22 @@
 
 import { FapicoSigner, FapicoNip44, SwError, SignerError } from '../core/seams.js';
 import { NOSTR_CMD, SW } from '../core/ctaphid.js';
+import { parseInfoBody } from './pin_flow.js';
 import { DeviceAbsentError } from '../core/loudness.js';
-import { errSentence } from './error-map.js';
+import { errSentence, CEREMONY_INTERRUPTED_SENTENCE } from './error-map.js';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
+
+/** The PIN's wire bytes: 6..64, the applet's payload shape (US-1691). */
+function pinBytes(pin) {
+  const bytes = new TextEncoder().encode(pin);
+  if (bytes.length < 6 || bytes.length > 64) {
+    throw Object.assign(new Error('the PIN is 6..64 characters'), {
+      name: 'SignerError',
+      code: 'BAD_PIN',
+    });
+  }
+  return bytes;
+}
 
 export function createHandlers({
   device,
@@ -103,7 +116,10 @@ export function createHandlers({
     device_status: async () => {
       try {
         const res = await device.ping();
-        return { state: res.sw === SW.OK ? 'connected' : 'error', sw: res.sw };
+        if (res.sw !== SW.OK) return { state: 'error', sw: res.sw };
+        // US-1706 — the proactive read: the PING body is GET_INFO, and the
+        // PIN surface (offer/locked/ready/unsupported) derives from it.
+        return { state: 'connected', sw: res.sw, info: parseInfoBody(res.data) };
       } catch (err) {
         if (err instanceof DeviceAbsentError || err?.code === 'DEVICE_ABSENT') {
           return { state: 'absent', code: 'DEVICE_ABSENT' };
@@ -119,13 +135,19 @@ export function createHandlers({
 
     // US-1702: the popup drives the chooser itself (a user gesture), then
     // tells the worker to adopt the granted device — the worker still never
-    // opens a chooser.
+    // opens a chooser. US-1706 — the answer carries the parsed GET_INFO body
+    // so the connect flow can derive the PIN surface the same way
+    // device_status does; a first pair is the first offer opportunity.
     pair_device: async () => {
       device.forget();
       // The user just chose the device: this probe bypasses the 1 s window
       // (it IS the connect flow, not a background poll).
       const res = await device.ping({ force: true });
-      return { state: res.sw === SW.OK ? 'connected' : 'error', sw: res.sw };
+      return {
+        state: res.sw === SW.OK ? 'connected' : 'error',
+        sw: res.sw,
+        info: parseInfoBody(res.data),
+      };
     },
 
     get_active_slot: async () => ({ slot: await activeSlot() }),
@@ -216,17 +238,72 @@ export function createHandlers({
       return {};
     },
 
-    export_key: async ([slot]) => {
-      if (!Number.isInteger(slot) || slot < 0 || slot > 7) {
-        throw Object.assign(new Error('slot must be 0..7'), { name: 'SignerError', code: 'BAD_SLOT' });
+    // --- PIN custody (US-1705) — touch-free: the PIN is the consent ----
+    verify_pin: async ([pin]) => {
+      await runOk(NOSTR_CMD.VERIFY_PIN, 0, pinBytes(pin));
+      return {};
+    },
+
+    set_pin: async ([pin]) => {
+      // P1 0 = SET; the device answers 6A82 on a PIN-set board (the error
+      // map names the state).
+      await runOk(NOSTR_CMD.SET_PIN, 0, pinBytes(pin));
+      return {};
+    },
+
+    change_pin: async ([current, next]) => {
+      // The applet's CHANGE payload: `lc(1) ‖ current(lc) ‖ new` — the
+      // length byte makes the split unambiguous.
+      const cur = pinBytes(current);
+      const nxt = pinBytes(next);
+      const arg = new Uint8Array(1 + cur.length + nxt.length);
+      arg[0] = cur.length;
+      arg.set(cur, 1);
+      arg.set(nxt, 1 + cur.length);
+      await runOk(NOSTR_CMD.SET_PIN, 1, arg);
+      return {};
+    },
+
+    lock: async () => {
+      await runOk(NOSTR_CMD.LOCK, 0, new Uint8Array(0));
+      return {};
+    },
+
+    // --- the custody ceremony (US-1715/US-1716) — trusted-only: the
+    // consent dialog is the consent, and it lives in the popup. The applet
+    // is neither touch-gated nor session-gated, and the button is not
+    // needed during the run.
+    ceremony_start: async () => {
+      // US-1716's serialization gate is structural: device.run is the
+      // fully serialized queue, so this job is atomic with respect to every
+      // other vendor request — queued operations settle strictly after the
+      // ceremony's last frame, and no second request reaches the firmware
+      // mid-run (the device would answer 6985 immediately).
+      const { sw, data } = await device.run(NOSTR_CMD.CEREMONY_START, 0, new Uint8Array(0));
+      if (sw === SW.OK) {
+        // The body is migrated(2 BE) ‖ already(2 BE) — the applet's own
+        // counts of what the reseat moved.
+        if (data.length < 4) {
+          throw Object.assign(new Error('CEREMONY_START answered 9000 with a short body'), {
+            name: 'SignerError', code: 'DEVICE_REPLY_MALFORMED',
+          });
+        }
+        return { migrated: (data[0] << 8) | data[1], already: (data[2] << 8) | data[3] };
       }
-      const data = await runOk(NOSTR_CMD.EXPORT_KEY, slot, new Uint8Array(0));
-      if (data.length < 32) {
-        throw Object.assign(new Error('EXPORT_KEY answered 9000 without a scalar'), {
-          name: 'SignerError', code: 'DEVICE_REPLY_MALFORMED',
+      if (sw === SW.STORE_FAULT) {
+        // US-1717 — a 0x6F00 on a ceremony run is interrupted-retryable,
+        // never the store-fault sentence ("its store faulted" promises a
+        // hardware failure that did not happen). The retry is offered
+        // through the consent dialog at the next connect.
+        throw Object.assign(new Error(CEREMONY_INTERRUPTED_SENTENCE), {
+          name: 'CeremonyInterruptedError',
+          code: 'CEREMONY_INTERRUPTED',
+          sw,
         });
       }
-      return { scalar: bytesToHex(data.subarray(0, 32)) };
+      // 0x6F02 (nothing to do), 0x6F01 (sealed), and everything else cross
+      // typed with the word — the error map carries each sentence.
+      throw new SwError('CEREMONY_START', sw);
     },
 
     get_grants: async () => listGrants(),

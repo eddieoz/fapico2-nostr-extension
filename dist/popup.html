@@ -26,6 +26,9 @@
         </div>
       </div>
       <div class="active-strip" id="active-strip" role="status"></div>
+      <!-- US-1707 — the lock indicator: shown only while a custody session is
+           open, because that is the one fact the user can act on. -->
+      <p class="lock-indicator" id="lock-indicator" role="status" hidden></p>
     </section>
 
     <!-- KEYS (home) -->
@@ -33,6 +36,10 @@
       <h2 class="screen-title">Keys</h2>
       <div class="occupancy" id="occupancy"></div>
       <div id="keys-list"></div>
+      <!-- US-1706 — the PIN custody row: the offer on a PIN-less custody
+           board, the manage entry once custody exists. Hidden entirely on an
+           old-firmware board (no CAP_PIN_MGMT). -->
+      <div id="pin-row" hidden></div>
       <div class="actions">
         <button id="go-generate" class="primary">Generate</button>
         <button id="go-import" class="ghost">Import</button>
@@ -58,7 +65,7 @@
     <!-- GENERATE -->
     <section class="screen" id="screen-generate" aria-label="Generate key">
       <h2 class="screen-title">Generate key</h2>
-      <p class="muted">Pick an empty slot. Generation happens on the device and needs a touch. A generated key can only be removed with Delete — there is no undo.</p>
+      <p class="muted">Pick an empty slot. Generation happens on the device and needs a touch. A generated key can only be removed with Delete — there is no undo. This identity cannot be backed up; it lives only on the device.</p>
       <div class="slot-picker" id="gen-slots"></div>
       <div class="actions">
         <button id="gen-confirm" class="primary amber" disabled>Generate &amp; touch</button>
@@ -109,17 +116,86 @@
       </div>
     </section>
 
-    <!-- EXPORT -->
-    <section class="screen" id="screen-export" aria-label="Export key">
-      <h2 class="screen-title">Export key</h2>
-      <p class="muted" id="export-what"></p>
-      <p class="muted"><b>Export shows the secret scalar once, in this window only.</b> It is never stored. Anyone who reads it owns the identity.</p>
-      <label class="check"><input type="checkbox" id="export-understand"> I understand this reveals the secret.</label>
+    <!-- PIN SET (US-1706) — the offer accepted. Local validation runs here;
+         the device enforces the same 6..64-byte rule and answers 6A82 if a
+         PIN already exists. Setting is not unlocking: the flow continues
+         into the verify screen. -->
+    <section class="screen" id="screen-pin-set" aria-label="Set PIN">
+      <h2 class="screen-title" id="pin-set-title">Set a PIN</h2>
+      <p class="muted" id="pin-set-body"></p>
+      <form id="pin-set-form">
+        <label class="field">New PIN (6–64 characters)
+          <input type="password" id="pin-set-input" autocomplete="new-password" spellcheck="false">
+        </label>
+        <label class="field">Repeat the new PIN
+          <input type="password" id="pin-set-confirm" autocomplete="new-password" spellcheck="false">
+        </label>
+        <p class="muted" id="pin-set-error" role="status" hidden></p>
+        <div class="actions">
+          <button type="submit" id="pin-set-confirm-btn" class="primary">Set PIN</button>
+          <button type="button" id="pin-set-cancel" class="ghost">Back</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- PIN VERIFY (US-1706) — the unlock dialog. It opens proactively from
+         the manage row, right after setting (setting is not unlocking), and
+         mid-operation when the device refuses a gated op with 6982 — in
+         which case the interrupted operation resumes untouched on success.
+         A locked-out board disables the form: the counter is durable and
+         zero, and only a management RESET recovers. -->
+    <section class="screen" id="screen-pin-verify" aria-label="Verify PIN">
+      <h2 class="screen-title" id="pin-verify-headline">verify your PIN</h2>
+      <p class="muted" id="pin-verify-body"></p>
+      <p class="muted" id="pin-verify-attempts" role="status" hidden></p>
+      <form id="pin-verify-form">
+        <label class="field">PIN
+          <input type="password" id="pin-verify-input" autocomplete="off" spellcheck="false">
+        </label>
+        <div class="actions">
+          <button type="submit" id="pin-verify-btn" class="primary">Verify</button>
+          <button type="button" id="pin-verify-cancel" class="ghost">Cancel</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- PIN MANAGE (US-1707) — custody exists: verify (when locked), change,
+         lock (when unlocked). -->
+    <section class="screen" id="screen-pin-manage" aria-label="Manage PIN">
+      <h2 class="screen-title">PIN</h2>
+      <p class="muted" id="pin-manage-status"></p>
       <div class="actions">
-        <button id="export-confirm" class="primary amber" disabled>Reveal &amp; touch</button>
-        <button id="export-cancel" class="ghost">Back</button>
+        <button id="pin-manage-verify" class="primary">Verify</button>
+        <button id="pin-manage-change" class="ghost">Change PIN</button>
+        <button id="pin-manage-lock" class="ghost">Lock now</button>
       </div>
-      <div id="export-out" hidden><div class="reveal-row"><p class="reveal" id="export-scalar"></p><button id="export-copy" type="button" class="ghost">Copy</button></div><p class="muted">Erase this from view when done — the popup drops it on close.</p></div>
+      <div class="actions">
+        <button id="pin-manage-back" class="ghost">Back</button>
+      </div>
+    </section>
+
+    <!-- PIN CHANGE (US-1706) — the current PIN is verified first and a
+         wrong one burns an attempt like a wrong unlock; the session state
+         never moves. -->
+    <section class="screen" id="screen-pin-change" aria-label="Change PIN">
+      <h2 class="screen-title" id="pin-change-title">Change PIN</h2>
+      <p class="muted" id="pin-change-body"></p>
+      <form id="pin-change-form">
+        <label class="field">Current PIN
+          <input type="password" id="pin-change-current" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="field">New PIN (6–64 characters)
+          <input type="password" id="pin-change-new" autocomplete="new-password" spellcheck="false">
+        </label>
+        <label class="field">Repeat the new PIN
+          <input type="password" id="pin-change-confirm" autocomplete="new-password" spellcheck="false">
+        </label>
+        <p class="muted" id="pin-change-error" role="status" hidden></p>
+        <div class="actions">
+          <button type="submit" id="pin-change-confirm-btn" class="primary amber">Change PIN &amp; confirm on the board</button>
+          <button type="button" id="pin-change-cancel" class="ghost">Back</button>
+        </div>
+      </form>
     </section>
 
     <!-- SITES -->

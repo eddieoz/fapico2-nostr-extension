@@ -15,9 +15,10 @@ import { serializeBridgeError, reviveBridgeError } from '../src/core/window_nost
 import { DeviceAbsentError } from '../src/core/loudness.js';
 
 test('US-1707 the mapping table covers every word in the D13 vocabulary', () => {
-  // 11 distinct words cross the transport (the fixture pins them); the map
-  // has a row for each — 0x9000 included, so a spurious OK sentence cannot
-  // hide.
+  // 15 distinct words cross the transport (the fixture pins them — the PIN
+  // custody words 0x6982 and 0x63c0 joined at US-1705, the ceremony words
+  // 0x6f01 and 0x6f02 at US-1714); the map has a row for each — 0x9000
+  // included, so a spurious OK sentence cannot hide.
   const words = new Set(Object.values(WIRE));
   for (const sw of words) {
     assert.ok(describeSw(sw).known, `0x${sw.toString(16)} must have a row`);
@@ -26,14 +27,14 @@ test('US-1707 the mapping table covers every word in the D13 vocabulary', () => 
       `the sentence for 0x${sw.toString(16)} says something`,
     );
   }
-  assert.equal(words.size, 11);
+  assert.equal(words.size, 15);
 });
 
 test('US-1707 the table-driven rows: each SW maps to its named sentence', () => {
   const rows = [
     [0x6985, 'touch timed out — the device asked for a touch and none came'],
     [0x6a84, 'that slot is occupied — delete it first'],
-    [0x6a82, 'that identity is not on the device'],
+    [0x6a82, 'that identity is not on the device — or, on a PIN verb, there is no PIN set yet'],
     [0x6f00, 'the device could not complete the operation — its store faulted'],
     [0x6d00, 'the device does not serve that command'],
     [0x6a80, 'the device refused the data — it could not read the request'],

@@ -48,6 +48,17 @@ export const NOSTR_CMD = {
   EXPORT_KEY: 0x48,
   DELETE_KEY: 0x49,
   SET_LABEL: 0x4a,
+  // The PIN custody dialect (US-1691..1694, US-1702) — touch-free by
+  // design: the PIN is the consent. SET_PIN's envelope idx rides P1 on
+  // the device, so 0 selects SET (establish custody) and 1 selects
+  // CHANGE (verify-the-current-PIN ceremony).
+  VERIFY_PIN: 0x4b,
+  SET_PIN: 0x4c,
+  LOCK: 0x4d,
+  // US-1714/US-1716 — the custody ceremony. The consent is the dialog,
+  // not a touch: the applet is neither touch-gated nor session-gated, and
+  // the run is the irreversible thing the dialog discloses.
+  CEREMONY_START: 0x4e,
 };
 
 // The D13 status vocabulary, as it crosses the transport: the vendor CBOR
@@ -58,6 +69,22 @@ export const SW = {
   CONDITIONS_NOT_SATISFIED: 0x6985, // the touch-required word
   INS_NOT_SUPPORTED: 0x6d00,
   STORE_FAULT: 0x6f00,
+  // The PIN custody vocabulary (US-1691). PIN_NOT_SET shares 0x6a82 with
+  // the file-not-found word — the same state word, read by context; the
+  // error map carries the sentence. 63c0 is the bottom of the same 63CX
+  // range a wrong PIN answers with: the lockout and "no attempts left"
+  // are one word.
+  PIN_SESSION_REQUIRED: 0x6982,
+  PIN_LOCKED: 0x63c0,
+  // The custody-ceremony vocabulary (US-1714): 0x6F01 is the sealed board
+  // whose custody store cannot be opened this boot — RAM-only, every
+  // command refused until the recovery ladder runs; 0x6F02 is the
+  // ceremony's "nothing to do" (no PIN, no sealed records, or already
+  // sealed). 0x6F00 on a ceremony run is the interrupted-retryable state —
+  // the error map carries a ceremony-specific sentence for it, never the
+  // store-fault phrasing (US-1717).
+  SEALED_UNAVAILABLE: 0x6f01,
+  CEREMONY_NOT_NEEDED: 0x6f02,
 };
 
 export const BROADCAST_CID = new Uint8Array([0xff, 0xff, 0xff, 0xff]);

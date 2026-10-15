@@ -87,6 +87,14 @@ main { padding: 12px 14px 14px; }
 .device-state { font: 12px/1.4 var(--mono); color: var(--ink-dim); }
 .device-state b { color: var(--ink); }
 
+/* US-1707 — the lock indicator: an open custody session is the one fact the
+   user can act on, so it reads in --ok, not the dim state grey. */
+.lock-indicator {
+  font: 11px/1.4 var(--mono);
+  color: var(--ok);
+  margin: 6px 0 0;
+}
+
 /* --- buttons --------------------------------------------------------------- */
 
 button {
@@ -352,6 +360,14 @@ nav button.active { color: var(--amber); }
 .reveal-row button { flex: none; }
 
 .actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+
+/* US-1706 — the PIN custody row sits between the key list and the actions:
+   one line of status copy plus its action, in the house row shape. The
+   [hidden] guard is load-bearing — an explicit display would defeat the
+   attribute's display:none. */
+#pin-row { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+#pin-row[hidden] { display: none; }
+#pin-row .muted { flex: 1 1 auto; }
 
 .muted { color: var(--ink-dim); font-size: 11px; line-height: 1.5; }
 code { font-family: var(--mono); color: var(--amber); font-size: 11px; }

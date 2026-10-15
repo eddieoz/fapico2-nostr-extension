@@ -115,7 +115,7 @@
           throw err;
         }
         const res = await call("pair_device");
-        lastHealth = res.state === "connected" ? { state: "connected" } : { state: "error", message: res.message };
+        lastHealth = res.state === "connected" ? { state: "connected", info: res.info ?? null } : { state: "error", message: res.message };
         persist(lastHealth);
         return lastHealth;
       },
@@ -126,7 +126,7 @@
         lastProbeAt = t;
         try {
           const res = await call("device_status");
-          lastHealth = res.state === "connected" ? { state: "connected" } : res.state === "busy" ? { state: "busy" } : res.code === "DEVICE_ABSENT" ? { state: "absent" } : { state: "error", message: res.message };
+          lastHealth = res.state === "connected" ? { state: "connected", info: res.info ?? null } : res.state === "busy" ? { state: "busy" } : res.code === "DEVICE_ABSENT" ? { state: "absent" } : { state: "error", message: res.message };
         } catch (err) {
           lastHealth = { state: "error", message: err.message };
         }

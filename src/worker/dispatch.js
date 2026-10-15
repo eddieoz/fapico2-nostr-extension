@@ -32,13 +32,22 @@ export const TRUSTED_ONLY_METHODS = new Set([
   'import_key',
   'delete_key',
   'set_label',
-  'export_key',
   'get_grants',
   'revoke_grant',
   'revoke_all',
   'prompt_decision',
   'get_active_slot',
   'set_active_slot',
+  // The PIN custody verbs (US-1705) — extension-UI only: a page must never
+  // learn the PIN's existence, let alone submit one.
+  'verify_pin',
+  'set_pin',
+  'change_pin',
+  'lock',
+  // The custody ceremony (US-1716) — the consent dialog is the consent,
+  // and it lives in the extension UI; a tab sender never drives the
+  // irreversible verb.
+  'ceremony_start',
 ]);
 
 /** The Flamingo sender gate, original implementation. */

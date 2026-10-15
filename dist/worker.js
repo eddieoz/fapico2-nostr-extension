@@ -27,10 +27,30 @@
   };
 
   // src/worker/error-map.js
+  var RECOVERY_LADDER = [
+    {
+      step: 1,
+      title: "power cycle",
+      body: "unplug the board, leave it off for 5 seconds, then plug it back in"
+    },
+    {
+      step: 2,
+      title: "re-flash the current release",
+      body: "re-flash the current fapico2 release image over BOOTSEL \u2014 this does not touch the identities on the board"
+    },
+    {
+      step: 3,
+      title: "factory reset \u2014 last resort",
+      body: "only then a factory reset from the management applet: imported identities come back from your backup file; generated identities are gone permanently"
+    }
+  ];
   var SW_ERROR_MAP = {
     36864: { code: "OK", message: "ok" },
     27264: { code: "SW_WRONG_DATA", message: "the device refused the data \u2014 it could not read the request" },
-    27266: { code: "SW_FILE_NOT_FOUND", message: "that identity is not on the device" },
+    27266: {
+      code: "SW_FILE_NOT_FOUND",
+      message: "that identity is not on the device \u2014 or, on a PIN verb, there is no PIN set yet"
+    },
     27268: { code: "SW_FILE_FULL", message: "that slot is occupied \u2014 delete it first" },
     27270: { code: "SW_INCORRECT_PARAMS", message: "the device refused the parameters" },
     27271: { code: "SW_LC_INCONSISTENT", message: "the device refused the command length" },
@@ -41,8 +61,40 @@
     // exists so the client never provokes that one).
     27013: { code: "SW_TOUCH_REQUIRED", message: "touch timed out \u2014 the device asked for a touch and none came" },
     27904: { code: "SW_INS_NOT_SUPPORTED", message: "the device does not serve that command" },
-    28416: { code: "SW_STORE_FAULT", message: "the device could not complete the operation \u2014 its store faulted" }
+    28416: { code: "SW_STORE_FAULT", message: "the device could not complete the operation \u2014 its store faulted" },
+    // The PIN custody rows (US-1705). 63C1..63C3 are the wrong-PIN answers
+    // — the low byte IS the attempts remaining — and 63C0 is the same
+    // range's floor: the lockout, whose only recovery is management RESET.
+    25539: { code: "SW_PIN_RETRIES", message: "wrong PIN \u2014 3 attempts left", attempts: 3 },
+    25538: { code: "SW_PIN_RETRIES", message: "wrong PIN \u2014 2 attempts left", attempts: 2 },
+    25537: { code: "SW_PIN_RETRIES", message: "wrong PIN \u2014 1 attempt left", attempts: 1 },
+    25536: {
+      code: "SW_PIN_LOCKED",
+      message: "the device is locked \u2014 too many wrong PINs. Recovery is a factory reset, which destroys every identity"
+    },
+    27010: {
+      code: "SW_PIN_SESSION_REQUIRED",
+      message: "the device requires its PIN before this operation \u2014 verify to continue"
+    },
+    // The custody-ceremony rows (US-1714/US-1717). 0x6F01 is the sealed
+    // board: the custody store could not be opened this boot, the applet
+    // answers every command from RAM only, and the recovery ladder below is
+    // the sentence's body — stepped, because RESET is never a co-equal
+    // button beside the power-cycle advice.
+    28417: {
+      code: "SW_SEALED_UNAVAILABLE",
+      message: "the device is sealed \u2014 its protected store could not be opened this boot, so nothing on it can be read or signed. Follow the recovery steps in order:",
+      ladder: RECOVERY_LADDER
+    },
+    // 0x6F02 is the ceremony's "nothing to do" — no PIN, no sealed records,
+    // or already sealed (US-1715: the refusal gates, in the order a user can
+    // act on them).
+    28418: {
+      code: "SW_CEREMONY_NOT_NEEDED",
+      message: "the migration has nothing to do here \u2014 the board has no protected identities to seal, or they are already sealed"
+    }
   };
+  var CEREMONY_INTERRUPTED_SENTENCE = "the sealing ceremony was interrupted partway through \u2014 what it finished is kept, and running it again completes it. Re-plug the board and open the extension to continue.";
   function describeSw(sw) {
     const known = SW_ERROR_MAP[sw];
     if (known) return { ...known, known: true };
@@ -195,7 +247,18 @@
     IMPORT_KEY: 71,
     EXPORT_KEY: 72,
     DELETE_KEY: 73,
-    SET_LABEL: 74
+    SET_LABEL: 74,
+    // The PIN custody dialect (US-1691..1694, US-1702) — touch-free by
+    // design: the PIN is the consent. SET_PIN's envelope idx rides P1 on
+    // the device, so 0 selects SET (establish custody) and 1 selects
+    // CHANGE (verify-the-current-PIN ceremony).
+    VERIFY_PIN: 75,
+    SET_PIN: 76,
+    LOCK: 77,
+    // US-1714/US-1716 — the custody ceremony. The consent is the dialog,
+    // not a touch: the applet is neither touch-gated nor session-gated, and
+    // the run is the irreversible thing the dialog discloses.
+    CEREMONY_START: 78
   };
   var SW = {
     OK: 36864,
@@ -203,7 +266,23 @@
     CONDITIONS_NOT_SATISFIED: 27013,
     // the touch-required word
     INS_NOT_SUPPORTED: 27904,
-    STORE_FAULT: 28416
+    STORE_FAULT: 28416,
+    // The PIN custody vocabulary (US-1691). PIN_NOT_SET shares 0x6a82 with
+    // the file-not-found word — the same state word, read by context; the
+    // error map carries the sentence. 63c0 is the bottom of the same 63CX
+    // range a wrong PIN answers with: the lockout and "no attempts left"
+    // are one word.
+    PIN_SESSION_REQUIRED: 27010,
+    PIN_LOCKED: 25536,
+    // The custody-ceremony vocabulary (US-1714): 0x6F01 is the sealed board
+    // whose custody store cannot be opened this boot — RAM-only, every
+    // command refused until the recovery ladder runs; 0x6F02 is the
+    // ceremony's "nothing to do" (no PIN, no sealed records, or already
+    // sealed). 0x6F00 on a ceremony run is the interrupted-retryable state —
+    // the error map carries a ceremony-specific sentence for it, never the
+    // store-fault phrasing (US-1717).
+    SEALED_UNAVAILABLE: 28417,
+    CEREMONY_NOT_NEEDED: 28418
   };
   var BROADCAST_CID = new Uint8Array([255, 255, 255, 255]);
   var DEFAULT_TIMEOUT_MS = 3e4;
@@ -7443,7 +7522,30 @@
     }
   };
 
+  // src/worker/pin_flow.js
+  function parseInfoBody(data) {
+    if (!data || data.length < 7) return null;
+    const flags = data.length >= 8 ? data[7] : 0;
+    return {
+      appletVer: [data[0], data[1]],
+      caps: data[2] << 8 | data[3],
+      maxPlaintext: data[4] << 8 | data[5],
+      nIdentities: data[6],
+      flags
+    };
+  }
+
   // src/worker/handlers.js
+  function pinBytes(pin) {
+    const bytes = new TextEncoder().encode(pin);
+    if (bytes.length < 6 || bytes.length > 64) {
+      throw Object.assign(new Error("the PIN is 6..64 characters"), {
+        name: "SignerError",
+        code: "BAD_PIN"
+      });
+    }
+    return bytes;
+  }
   function createHandlers({
     device,
     consent = async ({ method }) => ({ remember: false }),
@@ -7508,7 +7610,8 @@
       device_status: async () => {
         try {
           const res = await device.ping();
-          return { state: res.sw === SW.OK ? "connected" : "error", sw: res.sw };
+          if (res.sw !== SW.OK) return { state: "error", sw: res.sw };
+          return { state: "connected", sw: res.sw, info: parseInfoBody(res.data) };
         } catch (err) {
           if (err instanceof DeviceAbsentError || err?.code === "DEVICE_ABSENT") {
             return { state: "absent", code: "DEVICE_ABSENT" };
@@ -7521,11 +7624,17 @@
       },
       // US-1702: the popup drives the chooser itself (a user gesture), then
       // tells the worker to adopt the granted device — the worker still never
-      // opens a chooser.
+      // opens a chooser. US-1706 — the answer carries the parsed GET_INFO body
+      // so the connect flow can derive the PIN surface the same way
+      // device_status does; a first pair is the first offer opportunity.
       pair_device: async () => {
         device.forget();
         const res = await device.ping({ force: true });
-        return { state: res.sw === SW.OK ? "connected" : "error", sw: res.sw };
+        return {
+          state: res.sw === SW.OK ? "connected" : "error",
+          sw: res.sw,
+          info: parseInfoBody(res.data)
+        };
       },
       get_active_slot: async () => ({ slot: await activeSlot() }),
       set_active_slot: async ([slot]) => {
@@ -7604,18 +7713,52 @@
         await runOk(NOSTR_CMD.SET_LABEL, slot, bytes);
         return {};
       },
-      export_key: async ([slot]) => {
-        if (!Number.isInteger(slot) || slot < 0 || slot > 7) {
-          throw Object.assign(new Error("slot must be 0..7"), { name: "SignerError", code: "BAD_SLOT" });
+      // --- PIN custody (US-1705) — touch-free: the PIN is the consent ----
+      verify_pin: async ([pin]) => {
+        await runOk(NOSTR_CMD.VERIFY_PIN, 0, pinBytes(pin));
+        return {};
+      },
+      set_pin: async ([pin]) => {
+        await runOk(NOSTR_CMD.SET_PIN, 0, pinBytes(pin));
+        return {};
+      },
+      change_pin: async ([current, next]) => {
+        const cur = pinBytes(current);
+        const nxt = pinBytes(next);
+        const arg = new Uint8Array(1 + cur.length + nxt.length);
+        arg[0] = cur.length;
+        arg.set(cur, 1);
+        arg.set(nxt, 1 + cur.length);
+        await runOk(NOSTR_CMD.SET_PIN, 1, arg);
+        return {};
+      },
+      lock: async () => {
+        await runOk(NOSTR_CMD.LOCK, 0, new Uint8Array(0));
+        return {};
+      },
+      // --- the custody ceremony (US-1715/US-1716) — trusted-only: the
+      // consent dialog is the consent, and it lives in the popup. The applet
+      // is neither touch-gated nor session-gated, and the button is not
+      // needed during the run.
+      ceremony_start: async () => {
+        const { sw, data } = await device.run(NOSTR_CMD.CEREMONY_START, 0, new Uint8Array(0));
+        if (sw === SW.OK) {
+          if (data.length < 4) {
+            throw Object.assign(new Error("CEREMONY_START answered 9000 with a short body"), {
+              name: "SignerError",
+              code: "DEVICE_REPLY_MALFORMED"
+            });
+          }
+          return { migrated: data[0] << 8 | data[1], already: data[2] << 8 | data[3] };
         }
-        const data = await runOk(NOSTR_CMD.EXPORT_KEY, slot, new Uint8Array(0));
-        if (data.length < 32) {
-          throw Object.assign(new Error("EXPORT_KEY answered 9000 without a scalar"), {
-            name: "SignerError",
-            code: "DEVICE_REPLY_MALFORMED"
+        if (sw === SW.STORE_FAULT) {
+          throw Object.assign(new Error(CEREMONY_INTERRUPTED_SENTENCE), {
+            name: "CeremonyInterruptedError",
+            code: "CEREMONY_INTERRUPTED",
+            sw
           });
         }
-        return { scalar: bytesToHex(data.subarray(0, 32)) };
+        throw new SwError("CEREMONY_START", sw);
       },
       get_grants: async () => listGrants(),
       revoke_grant: async ([host]) => revoke(host),

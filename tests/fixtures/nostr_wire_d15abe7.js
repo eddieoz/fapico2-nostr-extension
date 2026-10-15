@@ -8,6 +8,12 @@
 // If the firmware changes the wire, the change lands here first as an
 // explicit, reviewed edit.
 export const SOURCE_COMMIT = 'd15abe7';
+// The fixture has been extended past d15abe7 twice: the PIN custody dialect
+// (fapico2 feat/nostr-pin, through US-1702, nostr_wire.rs NOSTR_CMD
+// 0x4B..0x4D and the SW_PIN_SESSION_REQUIRED / SW_PIN_LOCKED vocabulary),
+// and the custody-ceremony bytes (US-1714/US-1716, NOSTR_CMD 0x4E and the
+// SW_SEALED_UNAVAILABLE / SW_CEREMONY_NOT_NEEDED vocabulary) — each an
+// explicit, reviewed edit per the rule below.
 
 // firmware/src/nostr_wire.rs — NOSTR_CMD_* (u8).
 export const NOSTR_CMD = {
@@ -22,6 +28,16 @@ export const NOSTR_CMD = {
   EXPORT_KEY: 0x48,
   DELETE_KEY: 0x49,
   SET_LABEL: 0x4a,
+  // The PIN custody verbs (US-1691..1694, US-1702). SET_PIN's envelope idx
+  // rides P1: 0 selects SET, 1 selects CHANGE. EXPORT_KEY is retired — the
+  // firmware maps it to nothing and answers 0x6D00 in band (US-1699).
+  VERIFY_PIN: 0x4b,
+  SET_PIN: 0x4c,
+  LOCK: 0x4d,
+  // The custody ceremony (US-1714): the explicit migration verb the
+  // extension's "Migrate now" dialog drives. The consent is the dialog,
+  // not a touch — the applet is neither touch-gated nor session-gated.
+  CEREMONY_START: 0x4e,
 };
 
 // firmware/src/nostr_wire.rs — the D13 §2.2.0 vocabulary as it crosses the
@@ -47,6 +63,20 @@ export const SW = {
   CONDITIONS_NOT_SATISFIED: 0x6985,
   INS_NOT_SUPPORTED: 0x6d00,
   STORE_FAULT: 0x6f00,
+  // The PIN custody vocabulary (US-1691..1694). 0x6a82 is dual-homed — the
+  // firmware reads it as file-not-found OR no-PIN-set, by context; 0x63c0
+  // is the bottom of the 63CX range a wrong PIN answers with (63C1..63C3
+  // are 0x63c0 | attempts_remaining, rendered by the error map, not named
+  // constants).
+  PIN_SESSION_REQUIRED: 0x6982,
+  PIN_LOCKED: 0x63c0,
+  // The custody-ceremony vocabulary (US-1714). 0x6F01 is the sealed board
+  // whose custody store cannot open this boot (RAM-only until the recovery
+  // ladder runs); 0x6F02 is the ceremony's "nothing to do". 0x6F00 during a
+  // ceremony run is interrupted-retryable — a context mapping, not the
+  // store-fault phrasing (US-1717).
+  SEALED_UNAVAILABLE: 0x6f01,
+  CEREMONY_NOT_NEEDED: 0x6f02,
 };
 
 // firmware/src/nostr_wire.rs — NOSTR_REQ_ARG_MAX (derived from

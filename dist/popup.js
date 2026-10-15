@@ -99,8 +99,105 @@
     };
   }
 
-  // node_modules/.pnpm/@scure+base@1.2.6/node_modules/@scure/base/lib/esm/index.js
+  // src/popup/pairing.js
+  var VENDOR_FILTER = { usagePage: 65280, usage: 1 };
+  function createPairing({ requestDevice, call, persist = () => {
+  }, now: now2 = () => Date.now() }) {
+    let lastProbeAt = 0;
+    let lastHealth = null;
+    return {
+      /** The Connect flow — call from the click handler only. */
+      async connect() {
+        const devices = await requestDevice({ filters: [VENDOR_FILTER] });
+        if (!devices || devices.length === 0) {
+          const err = new Error("no device selected");
+          err.name = "NotFoundError";
+          throw err;
+        }
+        const res = await call("pair_device");
+        lastHealth = res.state === "connected" ? { state: "connected", info: res.info ?? null } : { state: "error", message: res.message };
+        persist(lastHealth);
+        return lastHealth;
+      },
+      /** Touch-free PING, rate-limited. Returns the device-card state. */
+      async health({ force = false } = {}) {
+        const t = now2();
+        if (!force && t - lastProbeAt < 1e3) return lastHealth;
+        lastProbeAt = t;
+        try {
+          const res = await call("device_status");
+          lastHealth = res.state === "connected" ? { state: "connected", info: res.info ?? null } : res.state === "busy" ? { state: "busy" } : res.code === "DEVICE_ABSENT" ? { state: "absent" } : { state: "error", message: res.message };
+        } catch (err) {
+          lastHealth = { state: "error", message: err.message };
+        }
+        persist(lastHealth);
+        return lastHealth;
+      },
+      get lastHealth() {
+        return lastHealth;
+      }
+    };
+  }
+
+  // node_modules/.pnpm/@noble+hashes@1.8.0/node_modules/@noble/hashes/esm/utils.js
   function isBytes(a) {
+    return a instanceof Uint8Array || ArrayBuffer.isView(a) && a.constructor.name === "Uint8Array";
+  }
+  function abytes(b, ...lengths) {
+    if (!isBytes(b))
+      throw new Error("Uint8Array expected");
+    if (lengths.length > 0 && !lengths.includes(b.length))
+      throw new Error("Uint8Array expected of length " + lengths + ", got length=" + b.length);
+  }
+  var hasHexBuiltin = /* @__PURE__ */ (() => (
+    // @ts-ignore
+    typeof Uint8Array.from([]).toHex === "function" && typeof Uint8Array.fromHex === "function"
+  ))();
+  var hexes = /* @__PURE__ */ Array.from({ length: 256 }, (_, i2) => i2.toString(16).padStart(2, "0"));
+  function bytesToHex(bytes) {
+    abytes(bytes);
+    if (hasHexBuiltin)
+      return bytes.toHex();
+    let hex = "";
+    for (let i2 = 0; i2 < bytes.length; i2++) {
+      hex += hexes[bytes[i2]];
+    }
+    return hex;
+  }
+  var asciis = { _0: 48, _9: 57, A: 65, F: 70, a: 97, f: 102 };
+  function asciiToBase16(ch) {
+    if (ch >= asciis._0 && ch <= asciis._9)
+      return ch - asciis._0;
+    if (ch >= asciis.A && ch <= asciis.F)
+      return ch - (asciis.A - 10);
+    if (ch >= asciis.a && ch <= asciis.f)
+      return ch - (asciis.a - 10);
+    return;
+  }
+  function hexToBytes(hex) {
+    if (typeof hex !== "string")
+      throw new Error("hex string expected, got " + typeof hex);
+    if (hasHexBuiltin)
+      return Uint8Array.fromHex(hex);
+    const hl = hex.length;
+    const al = hl / 2;
+    if (hl % 2)
+      throw new Error("hex string expected, got unpadded hex of length " + hl);
+    const array = new Uint8Array(al);
+    for (let ai = 0, hi = 0; ai < al; ai++, hi += 2) {
+      const n1 = asciiToBase16(hex.charCodeAt(hi));
+      const n2 = asciiToBase16(hex.charCodeAt(hi + 1));
+      if (n1 === void 0 || n2 === void 0) {
+        const char = hex[hi] + hex[hi + 1];
+        throw new Error('hex string expected, got non-hex character "' + char + '" at index ' + hi);
+      }
+      array[ai] = n1 * 16 + n2;
+    }
+    return array;
+  }
+
+  // node_modules/.pnpm/@scure+base@1.2.6/node_modules/@scure/base/lib/esm/index.js
+  function isBytes2(a) {
     return a instanceof Uint8Array || ArrayBuffer.isView(a) && a.constructor.name === "Uint8Array";
   }
   function isArrayOf(isString, arr) {
@@ -244,7 +341,7 @@
       throw new Error("radix2: carry overflow");
     return {
       encode: (bytes) => {
-        if (!isBytes(bytes))
+        if (!isBytes2(bytes))
           throw new Error("radix2.encode input should be Uint8Array");
         return convertRadix2(Array.from(bytes), 8, bits, !revPadding);
       },
@@ -302,7 +399,7 @@
     const fromWordsUnsafe = unsafeWrapper(fromWords);
     function encode(prefix, words, limit = 90) {
       astr("bech32.encode prefix", prefix);
-      if (isBytes(words))
+      if (isBytes2(words))
         words = Array.from(words);
       anumArr("bech32.encode", words);
       const plen = prefix.length;
@@ -356,103 +453,6 @@
     };
   }
   var bech32 = /* @__PURE__ */ genBech32("bech32");
-
-  // src/popup/pairing.js
-  var VENDOR_FILTER = { usagePage: 65280, usage: 1 };
-  function createPairing({ requestDevice, call, persist = () => {
-  }, now: now2 = () => Date.now() }) {
-    let lastProbeAt = 0;
-    let lastHealth = null;
-    return {
-      /** The Connect flow — call from the click handler only. */
-      async connect() {
-        const devices = await requestDevice({ filters: [VENDOR_FILTER] });
-        if (!devices || devices.length === 0) {
-          const err = new Error("no device selected");
-          err.name = "NotFoundError";
-          throw err;
-        }
-        const res = await call("pair_device");
-        lastHealth = res.state === "connected" ? { state: "connected" } : { state: "error", message: res.message };
-        persist(lastHealth);
-        return lastHealth;
-      },
-      /** Touch-free PING, rate-limited. Returns the device-card state. */
-      async health({ force = false } = {}) {
-        const t = now2();
-        if (!force && t - lastProbeAt < 1e3) return lastHealth;
-        lastProbeAt = t;
-        try {
-          const res = await call("device_status");
-          lastHealth = res.state === "connected" ? { state: "connected" } : res.state === "busy" ? { state: "busy" } : res.code === "DEVICE_ABSENT" ? { state: "absent" } : { state: "error", message: res.message };
-        } catch (err) {
-          lastHealth = { state: "error", message: err.message };
-        }
-        persist(lastHealth);
-        return lastHealth;
-      },
-      get lastHealth() {
-        return lastHealth;
-      }
-    };
-  }
-
-  // node_modules/.pnpm/@noble+hashes@1.8.0/node_modules/@noble/hashes/esm/utils.js
-  function isBytes2(a) {
-    return a instanceof Uint8Array || ArrayBuffer.isView(a) && a.constructor.name === "Uint8Array";
-  }
-  function abytes(b, ...lengths) {
-    if (!isBytes2(b))
-      throw new Error("Uint8Array expected");
-    if (lengths.length > 0 && !lengths.includes(b.length))
-      throw new Error("Uint8Array expected of length " + lengths + ", got length=" + b.length);
-  }
-  var hasHexBuiltin = /* @__PURE__ */ (() => (
-    // @ts-ignore
-    typeof Uint8Array.from([]).toHex === "function" && typeof Uint8Array.fromHex === "function"
-  ))();
-  var hexes = /* @__PURE__ */ Array.from({ length: 256 }, (_, i2) => i2.toString(16).padStart(2, "0"));
-  function bytesToHex(bytes) {
-    abytes(bytes);
-    if (hasHexBuiltin)
-      return bytes.toHex();
-    let hex = "";
-    for (let i2 = 0; i2 < bytes.length; i2++) {
-      hex += hexes[bytes[i2]];
-    }
-    return hex;
-  }
-  var asciis = { _0: 48, _9: 57, A: 65, F: 70, a: 97, f: 102 };
-  function asciiToBase16(ch) {
-    if (ch >= asciis._0 && ch <= asciis._9)
-      return ch - asciis._0;
-    if (ch >= asciis.A && ch <= asciis.F)
-      return ch - (asciis.A - 10);
-    if (ch >= asciis.a && ch <= asciis.f)
-      return ch - (asciis.a - 10);
-    return;
-  }
-  function hexToBytes(hex) {
-    if (typeof hex !== "string")
-      throw new Error("hex string expected, got " + typeof hex);
-    if (hasHexBuiltin)
-      return Uint8Array.fromHex(hex);
-    const hl = hex.length;
-    const al = hl / 2;
-    if (hl % 2)
-      throw new Error("hex string expected, got unpadded hex of length " + hl);
-    const array = new Uint8Array(al);
-    for (let ai = 0, hi = 0; ai < al; ai++, hi += 2) {
-      const n1 = asciiToBase16(hex.charCodeAt(hi));
-      const n2 = asciiToBase16(hex.charCodeAt(hi + 1));
-      if (n1 === void 0 || n2 === void 0) {
-        const char = hex[hi] + hex[hi + 1];
-        throw new Error('hex string expected, got non-hex character "' + char + '" at index ' + hi);
-      }
-      array[ai] = n1 * 16 + n2;
-    }
-    return array;
-  }
 
   // node_modules/.pnpm/@noble+hashes@2.0.1/node_modules/@noble/hashes/utils.js
   function isBytes3(a) {
@@ -6954,10 +6954,30 @@
   }
 
   // src/worker/error-map.js
+  var RECOVERY_LADDER = [
+    {
+      step: 1,
+      title: "power cycle",
+      body: "unplug the board, leave it off for 5 seconds, then plug it back in"
+    },
+    {
+      step: 2,
+      title: "re-flash the current release",
+      body: "re-flash the current fapico2 release image over BOOTSEL \u2014 this does not touch the identities on the board"
+    },
+    {
+      step: 3,
+      title: "factory reset \u2014 last resort",
+      body: "only then a factory reset from the management applet: imported identities come back from your backup file; generated identities are gone permanently"
+    }
+  ];
   var SW_ERROR_MAP = {
     36864: { code: "OK", message: "ok" },
     27264: { code: "SW_WRONG_DATA", message: "the device refused the data \u2014 it could not read the request" },
-    27266: { code: "SW_FILE_NOT_FOUND", message: "that identity is not on the device" },
+    27266: {
+      code: "SW_FILE_NOT_FOUND",
+      message: "that identity is not on the device \u2014 or, on a PIN verb, there is no PIN set yet"
+    },
     27268: { code: "SW_FILE_FULL", message: "that slot is occupied \u2014 delete it first" },
     27270: { code: "SW_INCORRECT_PARAMS", message: "the device refused the parameters" },
     27271: { code: "SW_LC_INCONSISTENT", message: "the device refused the command length" },
@@ -6968,7 +6988,38 @@
     // exists so the client never provokes that one).
     27013: { code: "SW_TOUCH_REQUIRED", message: "touch timed out \u2014 the device asked for a touch and none came" },
     27904: { code: "SW_INS_NOT_SUPPORTED", message: "the device does not serve that command" },
-    28416: { code: "SW_STORE_FAULT", message: "the device could not complete the operation \u2014 its store faulted" }
+    28416: { code: "SW_STORE_FAULT", message: "the device could not complete the operation \u2014 its store faulted" },
+    // The PIN custody rows (US-1705). 63C1..63C3 are the wrong-PIN answers
+    // — the low byte IS the attempts remaining — and 63C0 is the same
+    // range's floor: the lockout, whose only recovery is management RESET.
+    25539: { code: "SW_PIN_RETRIES", message: "wrong PIN \u2014 3 attempts left", attempts: 3 },
+    25538: { code: "SW_PIN_RETRIES", message: "wrong PIN \u2014 2 attempts left", attempts: 2 },
+    25537: { code: "SW_PIN_RETRIES", message: "wrong PIN \u2014 1 attempt left", attempts: 1 },
+    25536: {
+      code: "SW_PIN_LOCKED",
+      message: "the device is locked \u2014 too many wrong PINs. Recovery is a factory reset, which destroys every identity"
+    },
+    27010: {
+      code: "SW_PIN_SESSION_REQUIRED",
+      message: "the device requires its PIN before this operation \u2014 verify to continue"
+    },
+    // The custody-ceremony rows (US-1714/US-1717). 0x6F01 is the sealed
+    // board: the custody store could not be opened this boot, the applet
+    // answers every command from RAM only, and the recovery ladder below is
+    // the sentence's body — stepped, because RESET is never a co-equal
+    // button beside the power-cycle advice.
+    28417: {
+      code: "SW_SEALED_UNAVAILABLE",
+      message: "the device is sealed \u2014 its protected store could not be opened this boot, so nothing on it can be read or signed. Follow the recovery steps in order:",
+      ladder: RECOVERY_LADDER
+    },
+    // 0x6F02 is the ceremony's "nothing to do" — no PIN, no sealed records,
+    // or already sealed (US-1715: the refusal gates, in the order a user can
+    // act on them).
+    28418: {
+      code: "SW_CEREMONY_NOT_NEEDED",
+      message: "the migration has nothing to do here \u2014 the board has no protected identities to seal, or they are already sealed"
+    }
   };
 
   // src/popup/keys.js
@@ -7140,9 +7191,186 @@
     return { armed, arm, disarm, confirm };
   }
 
+  // src/worker/pin_flow.js
+  var CAP_PIN_MGMT = 4;
+  var FLAG_PIN_SET = 1;
+  var FLAG_SESSION_UNLOCKED = 2;
+  function parsePinState(info) {
+    const caps = info?.caps ?? 0;
+    const flags = info?.flags ?? 0;
+    const supported = (caps & CAP_PIN_MGMT) !== 0;
+    const pinSet = (flags & FLAG_PIN_SET) !== 0;
+    const unlocked = (flags & FLAG_SESSION_UNLOCKED) !== 0;
+    if (!supported) return { supported, pinSet, unlocked, ui: "unsupported" };
+    if (!pinSet) return { supported, pinSet, unlocked, ui: "offer" };
+    return { supported, pinSet, unlocked, ui: unlocked ? "ready" : "locked" };
+  }
+  var LOCKED_OUT_MESSAGE = "the device is locked \u2014 too many wrong PINs. Recovery is a factory reset from the management applet, which destroys every identity on the board.";
+  function createPinFlow() {
+    let view = { ui: "idle" };
+    let pending = null;
+    const show2 = (v) => (view = v) && v;
+    return {
+      get view() {
+        return view;
+      },
+      get pending() {
+        return pending;
+      },
+      /** Connect: the proactive read. A re-connect starts a fresh surface —
+       *  a pending op does not survive it (the session flag is device-side
+       *  and may have moved under us). */
+      connect(info) {
+        pending = null;
+        const state2 = parsePinState(info);
+        return show2({ ui: state2.ui, state: state2 });
+      },
+      /** The user accepted the first-connect banner. */
+      offerAccepted() {
+        if (view.ui !== "offer") return view;
+        return show2({ ui: "setting", state: view.state });
+      },
+      /** The user dismissed the banner. A PIN-less board is fully usable —
+       *  the gate never fires — so the surface is the ordinary one, and the
+       *  settings row still offers custody later. */
+      offerDismissed() {
+        if (view.ui !== "offer") return view;
+        return show2({ ui: "ready", state: view.state });
+      },
+      /** SET_PIN answered 9000. Setting is not unlocking: straight into the
+       *  verify dialog. */
+      setOk() {
+        if (view.ui !== "setting") return view;
+        return show2({ ui: "locked", attempts: 3, justSet: true, state: view.state });
+      },
+      /** SET_PIN answered SW_PIN_ALREADY_SET (0x6a82) — a stale surface.
+       *  Re-read at the next connect; meanwhile the dialog says so. */
+      setRefused() {
+        return show2({ ui: "locked", attempts: 3, stale: true, state: view.state });
+      },
+      /** A trusted op died with SW_PIN_SESSION_REQUIRED — the gate engaged.
+       *  The op is kept so the user never re-fills a form (op-resume). */
+      gated(method, args) {
+        pending = { method, args };
+        return show2({ ui: "locked", attempts: view.attempts ?? 3, gated: true, state: view.state });
+      },
+      /** VERIFY answered 9000: the session is open and the gated op resumes
+       *  — the caller re-issues `pending` untouched. */
+      verifyOk() {
+        const resume = pending;
+        pending = null;
+        return show2({ ui: "ready", resume, state: view.state });
+      },
+      /** VERIFY answered a refusal. 63Cn names the attempts left; 63C0 is the
+       *  floor — locked out, recovery stated plainly. */
+      verifySw(sw) {
+        if (sw === 25536) {
+          pending = null;
+          return show2({ ui: "locked-out", message: LOCKED_OUT_MESSAGE, state: view.state });
+        }
+        if ((sw & 65520) === 25536) {
+          const attempts = sw & 15;
+          return show2({ ui: "locked", attempts, gated: pending !== null, state: view.state });
+        }
+        return show2({ ui: "locked", error: sw, state: view.state });
+      },
+      /** LOCK answered 9000 — the session is closed again. */
+      lockOk() {
+        pending = null;
+        return show2({ ui: "locked", attempts: 3, state: view.state });
+      }
+    };
+  }
+
+  // src/popup/pin-screens.js
+  function pinRowModel(state2) {
+    if (!state2 || !state2.supported) return { kind: "hidden" };
+    if (!state2.pinSet) return { kind: "offer" };
+    return { kind: "manage", unlocked: state2.unlocked };
+  }
+  function lockIndicatorModel(state2) {
+    if (!state2 || !state2.supported || !state2.pinSet || !state2.unlocked) {
+      return { show: false, text: "" };
+    }
+    return { show: true, text: "unlocked \u2014 until the board restarts" };
+  }
+  function verifyModel(view, pendingMethod = null) {
+    if (view.ui === "locked-out") {
+      return {
+        headline: "the device is locked",
+        body: view.message ?? LOCKED_OUT_MESSAGE,
+        attemptsLeft: 0,
+        lockedOut: true
+      };
+    }
+    let headline;
+    let body;
+    if (view.justSet) {
+      headline = "PIN set";
+      body = "setting the PIN does not open the session \u2014 verify it now to unlock signing";
+    } else if (view.stale) {
+      headline = "a PIN is already set on this board";
+      body = "verify it instead \u2014 the device refused to set a second one";
+    } else if (view.gated && pendingMethod) {
+      headline = "your PIN is needed first";
+      body = `verify and the \u201C${pendingMethod}\u201D you started continues where it left off`;
+    } else {
+      headline = "verify your PIN";
+      body = "the PIN opens the signing session \u2014 it stays open until the board restarts";
+    }
+    return {
+      headline,
+      body,
+      attemptsLeft: view.attempts ?? null,
+      lockedOut: false
+    };
+  }
+  function manageModel(state2) {
+    return {
+      statusLine: state2.unlocked ? "the session is open" : "the session is locked",
+      canVerify: !state2.unlocked,
+      canLock: state2.unlocked
+    };
+  }
+  function setModel() {
+    return {
+      title: "Set a PIN",
+      body: "a PIN guards every key on the board: signing asks for it after each restart, and too many wrong tries lock the device. 6 to 64 characters."
+    };
+  }
+  function changeModel() {
+    return {
+      title: "Change PIN",
+      body: "the current PIN is verified first \u2014 a wrong one burns an attempt, exactly like a wrong unlock. Changing the PIN does not open or close the session. 6 to 64 characters."
+    };
+  }
+  function validatePin(pin) {
+    const bytes = new TextEncoder().encode(String(pin ?? ""));
+    if (bytes.length < 6 || bytes.length > 64) {
+      throw Object.assign(
+        new Error(`the PIN is ${bytes.length} bytes \u2014 the device takes 6 to 64`),
+        { name: "SignerError", code: "BAD_PIN" }
+      );
+    }
+    return bytes;
+  }
+  function validatePinChange(current, next, confirm) {
+    validatePin(current);
+    validatePin(next);
+    validatePin(confirm);
+    if (next !== confirm) {
+      throw Object.assign(new Error("the two new-PIN entries do not match"), {
+        name: "SignerError",
+        code: "BAD_PIN"
+      });
+    }
+  }
+
   // src/popup/popup.js
   var api = createPortClient();
   var $ = (id) => document.getElementById(id);
+  var SW_PIN_SESSION_REQUIRED = 27010;
+  var PIN_METHODS = /* @__PURE__ */ new Set(["verify_pin", "set_pin", "change_pin", "lock"]);
   var state = {
     keys: [],
     deviceState: "checking",
@@ -7155,15 +7383,21 @@
     deleteTarget: null,
     // {idx, npub, label}
     labelTarget: null,
-    exportTarget: null,
-    lastHealth: null
+    lastHealth: null,
     // persisted to storage.session so reopen is truthful
+    screen: "keys",
+    // US-1706 — where the verify dialog must return to
+    pinReturnScreen: "keys",
+    pinVerifyWait: null
+    // the suspended gated op's bridge, or null
   };
+  var pinFlow = createPinFlow();
   function show(screen) {
     document.querySelectorAll(".screen").forEach((s) => s.classList.remove("active"));
     $(`screen-${screen}`)?.classList.add("active");
     $("nav-keys").classList.toggle("active", screen === "keys");
     $("nav-sites").classList.toggle("active", screen === "sites");
+    state.screen = screen;
   }
   function notice(msg, cls = "") {
     const el = $("notice");
@@ -7175,20 +7409,42 @@
     $("touch-bar").classList.toggle("on", on);
     $("touch-text").textContent = text;
   }
+  function deviceCallNotice(err) {
+    const word = err.sw !== void 0 ? SW_WORDS[err.sw] : null;
+    if (err.sw === 27013) {
+      touch(false);
+      notice(word ?? err.message, "err");
+    } else {
+      notice(word ?? err.message ?? `${err.code ?? "error"}`, "err");
+    }
+  }
+  async function resumeThroughGate(originalErr, method, args) {
+    pinFlow.gated(method, args);
+    renderPinRow();
+    state.pinReturnScreen = state.screen;
+    openPinVerify();
+    const verified = await new Promise((resolve) => {
+      state.pinVerifyWait = resolve;
+    });
+    state.pinVerifyWait = null;
+    show(state.pinReturnScreen ?? "keys");
+    if (!verified) {
+      deviceCallNotice(originalErr);
+      throw originalErr;
+    }
+    return deviceCall(method, ...args);
+  }
   async function deviceCall(method, ...args) {
-    const TOUCH_GATED = /* @__PURE__ */ new Set(["sign_event", "generate_key", "import_key", "delete_key", "set_label", "export_key", "nip44_encrypt", "nip44_decrypt"]);
+    const TOUCH_GATED = /* @__PURE__ */ new Set(["sign_event", "generate_key", "import_key", "delete_key", "set_label", "nip44_encrypt", "nip44_decrypt"]);
     const gated = TOUCH_GATED.has(method);
     if (gated) touch(true);
     try {
       return await api.call(method, ...args);
     } catch (err) {
-      const word = err.sw !== void 0 ? SW_WORDS[err.sw] : null;
-      if (err.sw === 27013) {
-        touch(false);
-        notice(word ?? err.message, "err");
-      } else {
-        notice(word ?? err.message ?? `${err.code ?? "error"}`, "err");
+      if (err?.sw === SW_PIN_SESSION_REQUIRED && !PIN_METHODS.has(method)) {
+        return resumeThroughGate(err, method, args);
       }
+      deviceCallNotice(err);
       throw err;
     } finally {
       if (gated) touch(false);
@@ -7224,7 +7480,223 @@
       cardBtn.textContent = "Connect";
       cardBtn.setAttribute("aria-label", "Connect the board");
     }
+    applyPinInfo(h);
   }
+  function applyPinInfo(h) {
+    pinFlow.connect(h?.state === "connected" ? h.info ?? null : null);
+    renderPinRow();
+    renderLockIndicator();
+  }
+  function renderLockIndicator() {
+    const m = lockIndicatorModel(pinFlow.view.state);
+    const el = $("lock-indicator");
+    el.hidden = !m.show;
+    el.textContent = m.text;
+  }
+  function renderPinRow() {
+    const el = $("pin-row");
+    const m = pinRowModel(pinFlow.view.state);
+    el.hidden = m.kind === "hidden";
+    if (m.kind === "offer") {
+      el.innerHTML = `
+      <p class="muted">No PIN is set \u2014 a PIN guards every key on the board against a restart's open session.</p>
+      <div class="actions">
+        <button class="primary" data-pin-act="accept">Set a PIN</button>
+        <button class="ghost" data-pin-act="dismiss">Not now</button>
+      </div>`;
+    } else if (m.kind === "manage") {
+      el.innerHTML = `
+      <p class="muted">PIN custody on \u2014 ${m.unlocked ? "the session is open until the board restarts" : "the session is locked; signing asks for the PIN"}.</p>
+      <div class="actions">
+        <button class="ghost" data-pin-act="manage">Manage PIN</button>
+      </div>`;
+    } else {
+      el.innerHTML = "";
+    }
+  }
+  $("pin-row").addEventListener("click", (ev) => {
+    const btn = ev.target.closest("button[data-pin-act]");
+    if (!btn) return;
+    const act = btn.dataset.pinAct;
+    if (act === "accept") {
+      pinFlow.offerAccepted();
+      renderPinSet();
+      show("pin-set");
+    }
+    if (act === "dismiss") {
+      pinFlow.offerDismissed();
+      renderPinRow();
+    }
+    if (act === "manage") {
+      renderPinManage();
+      show("pin-manage");
+    }
+  });
+  function renderPinSet() {
+    const m = setModel();
+    $("pin-set-title").textContent = m.title;
+    $("pin-set-body").textContent = m.body;
+    $("pin-set-input").value = "";
+    $("pin-set-confirm").value = "";
+    $("pin-set-error").hidden = true;
+  }
+  function setScreenError(msg) {
+    const el = $("pin-set-error");
+    el.hidden = !msg;
+    el.textContent = msg ?? "";
+  }
+  $("pin-set-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const pin = $("pin-set-input").value;
+    try {
+      validatePin(pin);
+      if (pin !== $("pin-set-confirm").value) {
+        throw Object.assign(new Error("the two PIN entries do not match"), {
+          name: "SignerError",
+          code: "BAD_PIN"
+        });
+      }
+    } catch (err) {
+      setScreenError(err.message);
+      return;
+    }
+    setScreenError("");
+    try {
+      await deviceCall("set_pin", pin);
+    } catch (err) {
+      if (err?.sw === 27266) {
+        pinFlow.setRefused();
+        openPinVerify();
+      }
+      return;
+    }
+    pinFlow.setOk();
+    $("pin-set-input").value = "";
+    $("pin-set-confirm").value = "";
+    renderPinRow();
+    openPinVerify();
+  });
+  $("pin-set-cancel").addEventListener("click", () => {
+    setScreenError("");
+    show("keys");
+  });
+  function renderPinVerifyScreen() {
+    const m = verifyModel(pinFlow.view, pinFlow.pending?.method ?? null);
+    $("pin-verify-headline").textContent = m.headline;
+    $("pin-verify-body").textContent = m.body;
+    const attemptsEl = $("pin-verify-attempts");
+    attemptsEl.hidden = m.lockedOut || m.attemptsLeft == null;
+    attemptsEl.textContent = m.attemptsLeft != null ? `${m.attemptsLeft} attempt${m.attemptsLeft === 1 ? "" : "s"} left` : "";
+    $("pin-verify-btn").disabled = m.lockedOut;
+    $("pin-verify-input").disabled = m.lockedOut;
+    $("pin-verify-cancel").disabled = false;
+  }
+  function openPinVerify() {
+    state.pinReturnScreen = state.screen ?? "keys";
+    renderPinVerifyScreen();
+    show("pin-verify");
+  }
+  $("pin-verify-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    if (pinFlow.view.ui === "locked-out") return;
+    const input = $("pin-verify-input");
+    try {
+      await api.call("verify_pin", input.value);
+    } catch (verr) {
+      pinFlow.verifySw(verr.sw);
+      renderPinVerifyScreen();
+      if ((verr.sw & 65520) === 25536) input.value = "";
+      return;
+    }
+    pinFlow.verifyOk();
+    input.value = "";
+    renderPinRow();
+    renderLockIndicator();
+    const wait = state.pinVerifyWait;
+    if (wait) {
+      wait(true);
+      return;
+    }
+    notice("unlocked \u2014 signing works until the board restarts", "ok");
+    renderPinManage();
+    show("pin-manage");
+  });
+  $("pin-verify-cancel").addEventListener("click", () => {
+    $("pin-verify-input").value = "";
+    const wait = state.pinVerifyWait;
+    state.pinVerifyWait = null;
+    if (wait) {
+      wait(false);
+      return;
+    }
+    show("pin-manage");
+  });
+  function renderPinManage() {
+    const m = manageModel(pinFlow.view.state);
+    $("pin-manage-status").textContent = m.statusLine;
+    $("pin-manage-verify").hidden = !m.canVerify;
+    $("pin-manage-lock").hidden = !m.canLock;
+  }
+  $("pin-manage-verify").addEventListener("click", () => openPinVerify());
+  $("pin-manage-change").addEventListener("click", () => {
+    renderPinChange();
+    show("pin-change");
+  });
+  $("pin-manage-lock").addEventListener("click", async () => {
+    try {
+      await api.call("lock");
+    } catch (err) {
+      deviceCallNotice(err);
+      return;
+    }
+    pinFlow.lockOk();
+    renderPinRow();
+    renderLockIndicator();
+    renderPinManage();
+    notice("locked \u2014 signing asks for the PIN again after the board restarts", "ok");
+  });
+  $("pin-manage-back").addEventListener("click", () => show("keys"));
+  function renderPinChange() {
+    const m = changeModel();
+    $("pin-change-title").textContent = m.title;
+    $("pin-change-body").textContent = m.body;
+    for (const id of ["pin-change-current", "pin-change-new", "pin-change-confirm"]) {
+      $(id).value = "";
+    }
+    $("pin-change-error").hidden = true;
+  }
+  function changeScreenError(msg) {
+    const el = $("pin-change-error");
+    el.hidden = !msg;
+    el.textContent = msg ?? "";
+  }
+  $("pin-change-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const current = $("pin-change-current").value;
+    const next = $("pin-change-new").value;
+    try {
+      validatePinChange(current, next, $("pin-change-confirm").value);
+    } catch (err) {
+      changeScreenError(err.message);
+      return;
+    }
+    changeScreenError("");
+    try {
+      await deviceCall("change_pin", current, next);
+    } catch {
+      return;
+    }
+    $("pin-change-current").value = "";
+    $("pin-change-new").value = "";
+    $("pin-change-confirm").value = "";
+    notice("PIN changed \u2014 the session state did not move", "ok");
+    renderPinRow();
+    show("pin-manage");
+  });
+  $("pin-change-cancel").addEventListener("click", () => {
+    changeScreenError("");
+    show("pin-manage");
+  });
   async function healthCheck({ force = false } = {}) {
     let h = await pairing.health({ force });
     if (h.state === "busy") {
@@ -7324,7 +7796,6 @@
         <span class="key-actions">
           <button type="button" data-act="copy" data-idx="${r.idx}" title="Copy npub to clipboard">copy</button>
           <button data-act="label" data-idx="${r.idx}" title="Set label">label</button>
-          <button data-act="export" data-idx="${r.idx}" title="Export key">export</button>
           <button data-act="delete" data-idx="${r.idx}" title="Delete key">delete</button>
         </span>
       </div>`;
@@ -7359,7 +7830,6 @@
     if (btn.dataset.act === "copy") return copyNpub(row);
     if (btn.dataset.act === "delete") openDelete(row);
     if (btn.dataset.act === "label") openLabel(row);
-    if (btn.dataset.act === "export") openExport(row);
   });
   $("keys-list").addEventListener("change", async (ev) => {
     const input = ev.target.closest('input[name="active-key"]');
@@ -7526,50 +7996,6 @@
     }
   });
   $("label-cancel").addEventListener("click", () => show("keys"));
-  function openExport(row) {
-    state.exportTarget = row;
-    $("export-what").innerHTML = `Export the secret of <code>${npubBech32(row.pubkey).slice(0, 20)}\u2026</code> (slot ${row.idx}).`;
-    $("export-understand").checked = false;
-    $("export-confirm").disabled = true;
-    $("export-out").hidden = true;
-    show("export");
-  }
-  $("export-understand").addEventListener("change", (ev) => {
-    $("export-confirm").disabled = !ev.target.checked;
-  });
-  $("export-confirm").addEventListener("click", async () => {
-    const row = state.exportTarget;
-    if (!row) return;
-    try {
-      const { scalar } = await deviceCall("export_key", row.idx);
-      $("export-out").hidden = false;
-      $("export-scalar").textContent = bech32.encode(
-        "nsec",
-        bech32.toWords((() => {
-          const out = new Uint8Array(32);
-          for (let i2 = 0; i2 < 32; i2++) out[i2] = parseInt(scalar.slice(i2 * 2, i2 * 2 + 2), 16);
-          return out;
-        })())
-      );
-      notice("");
-    } catch {
-    }
-  });
-  async function copyScalar() {
-    const nsec = $("export-scalar").textContent;
-    if (!nsec) return;
-    try {
-      await navigator.clipboard.writeText(nsec);
-      notice("Copied to clipboard");
-    } catch {
-      notice("could not copy \u2014 select the text and copy it by hand");
-    }
-  }
-  $("export-copy").addEventListener("click", () => copyScalar());
-  $("export-cancel").addEventListener("click", () => {
-    $("export-scalar").textContent = "";
-    show("keys");
-  });
   async function loadSites() {
     const list = $("sites-list");
     try {
@@ -7672,13 +8098,13 @@
 })();
 /*! Bundled license information:
 
-@scure/base/lib/esm/index.js:
-@scure/base/index.js:
-  (*! scure-base - MIT License (c) 2022 Paul Miller (paulmillr.com) *)
-
 @noble/hashes/esm/utils.js:
 @noble/hashes/utils.js:
   (*! noble-hashes - MIT License (c) 2022 Paul Miller (paulmillr.com) *)
+
+@scure/base/lib/esm/index.js:
+@scure/base/index.js:
+  (*! scure-base - MIT License (c) 2022 Paul Miller (paulmillr.com) *)
 
 @noble/curves/utils.js:
 @noble/curves/abstract/modular.js:

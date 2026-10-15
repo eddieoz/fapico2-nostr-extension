@@ -395,10 +395,30 @@
   var bech32 = /* @__PURE__ */ genBech32("bech32");
 
   // src/worker/error-map.js
+  var RECOVERY_LADDER = [
+    {
+      step: 1,
+      title: "power cycle",
+      body: "unplug the board, leave it off for 5 seconds, then plug it back in"
+    },
+    {
+      step: 2,
+      title: "re-flash the current release",
+      body: "re-flash the current fapico2 release image over BOOTSEL \u2014 this does not touch the identities on the board"
+    },
+    {
+      step: 3,
+      title: "factory reset \u2014 last resort",
+      body: "only then a factory reset from the management applet: imported identities come back from your backup file; generated identities are gone permanently"
+    }
+  ];
   var SW_ERROR_MAP = {
     36864: { code: "OK", message: "ok" },
     27264: { code: "SW_WRONG_DATA", message: "the device refused the data \u2014 it could not read the request" },
-    27266: { code: "SW_FILE_NOT_FOUND", message: "that identity is not on the device" },
+    27266: {
+      code: "SW_FILE_NOT_FOUND",
+      message: "that identity is not on the device \u2014 or, on a PIN verb, there is no PIN set yet"
+    },
     27268: { code: "SW_FILE_FULL", message: "that slot is occupied \u2014 delete it first" },
     27270: { code: "SW_INCORRECT_PARAMS", message: "the device refused the parameters" },
     27271: { code: "SW_LC_INCONSISTENT", message: "the device refused the command length" },
@@ -409,7 +429,38 @@
     // exists so the client never provokes that one).
     27013: { code: "SW_TOUCH_REQUIRED", message: "touch timed out \u2014 the device asked for a touch and none came" },
     27904: { code: "SW_INS_NOT_SUPPORTED", message: "the device does not serve that command" },
-    28416: { code: "SW_STORE_FAULT", message: "the device could not complete the operation \u2014 its store faulted" }
+    28416: { code: "SW_STORE_FAULT", message: "the device could not complete the operation \u2014 its store faulted" },
+    // The PIN custody rows (US-1705). 63C1..63C3 are the wrong-PIN answers
+    // — the low byte IS the attempts remaining — and 63C0 is the same
+    // range's floor: the lockout, whose only recovery is management RESET.
+    25539: { code: "SW_PIN_RETRIES", message: "wrong PIN \u2014 3 attempts left", attempts: 3 },
+    25538: { code: "SW_PIN_RETRIES", message: "wrong PIN \u2014 2 attempts left", attempts: 2 },
+    25537: { code: "SW_PIN_RETRIES", message: "wrong PIN \u2014 1 attempt left", attempts: 1 },
+    25536: {
+      code: "SW_PIN_LOCKED",
+      message: "the device is locked \u2014 too many wrong PINs. Recovery is a factory reset, which destroys every identity"
+    },
+    27010: {
+      code: "SW_PIN_SESSION_REQUIRED",
+      message: "the device requires its PIN before this operation \u2014 verify to continue"
+    },
+    // The custody-ceremony rows (US-1714/US-1717). 0x6F01 is the sealed
+    // board: the custody store could not be opened this boot, the applet
+    // answers every command from RAM only, and the recovery ladder below is
+    // the sentence's body — stepped, because RESET is never a co-equal
+    // button beside the power-cycle advice.
+    28417: {
+      code: "SW_SEALED_UNAVAILABLE",
+      message: "the device is sealed \u2014 its protected store could not be opened this boot, so nothing on it can be read or signed. Follow the recovery steps in order:",
+      ladder: RECOVERY_LADDER
+    },
+    // 0x6F02 is the ceremony's "nothing to do" — no PIN, no sealed records,
+    // or already sealed (US-1715: the refusal gates, in the order a user can
+    // act on them).
+    28418: {
+      code: "SW_CEREMONY_NOT_NEEDED",
+      message: "the migration has nothing to do here \u2014 the board has no protected identities to seal, or they are already sealed"
+    }
   };
 
   // src/popup/keys.js
