@@ -48,6 +48,9 @@ export class MockDevice {
     this.pin = null;
     this.retries = 3;
     this.unlocked = false;
+    // The GET_INFO body (US-1706): applet_ver ‖ caps ‖ max_plaintext ‖
+    // n ‖ flags — a custody-generation board with no PIN by default.
+    this.info = { appletVer: [0x00, 0x02], caps: 0x0007, maxPlaintext: 0x0700, nIdentities: this.keys.length, flags: 0x00 };
   }
 
   setGrants(on) {
@@ -113,6 +116,23 @@ export class MockDevice {
       case NOSTR_CMD.LOCK: {
         this.unlocked = false;
         return { sw: SW.OK, data: new Uint8Array(0) };
+      }
+      case NOSTR_CMD.PING: {
+        // INS_GET_INFO: applet_ver(2) ‖ caps(2) ‖ max_plaintext(2) ‖
+        // n(1) ‖ flags(1); flags mirrors the PIN state (bit0 set, bit1 the
+        // unlocked session).
+        const i = this.info;
+        const flags = (i.flags & ~0x03) | (this.pin != null ? 0x01 : 0x00) | (this.unlocked ? 0x02 : 0x00);
+        const data = new Uint8Array(8);
+        data[0] = i.appletVer[0];
+        data[1] = i.appletVer[1];
+        data[2] = i.caps >> 8;
+        data[3] = i.caps & 0xff;
+        data[4] = i.maxPlaintext >> 8;
+        data[5] = i.maxPlaintext & 0xff;
+        data[6] = i.nIdentities;
+        data[7] = flags;
+        return { sw: SW.OK, data };
       }
       case NOSTR_CMD.GET_PUBKEY: {
         // §2.2: npub(32) ‖ bech32_npub(63).

@@ -10,6 +10,7 @@
 
 import { FapicoSigner, FapicoNip44, SwError, SignerError } from '../core/seams.js';
 import { NOSTR_CMD, SW } from '../core/ctaphid.js';
+import { parseInfoBody } from './pin_flow.js';
 import { DeviceAbsentError } from '../core/loudness.js';
 import { errSentence } from './error-map.js';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
@@ -115,7 +116,10 @@ export function createHandlers({
     device_status: async () => {
       try {
         const res = await device.ping();
-        return { state: res.sw === SW.OK ? 'connected' : 'error', sw: res.sw };
+        if (res.sw !== SW.OK) return { state: 'error', sw: res.sw };
+        // US-1706 — the proactive read: the PING body is GET_INFO, and the
+        // PIN surface (offer/locked/ready/unsupported) derives from it.
+        return { state: 'connected', sw: res.sw, info: parseInfoBody(res.data) };
       } catch (err) {
         if (err instanceof DeviceAbsentError || err?.code === 'DEVICE_ABSENT') {
           return { state: 'absent', code: 'DEVICE_ABSENT' };

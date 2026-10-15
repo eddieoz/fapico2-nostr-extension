@@ -30,7 +30,10 @@
   var SW_ERROR_MAP = {
     36864: { code: "OK", message: "ok" },
     27264: { code: "SW_WRONG_DATA", message: "the device refused the data \u2014 it could not read the request" },
-    27266: { code: "SW_FILE_NOT_FOUND", message: "that identity is not on the device" },
+    27266: {
+      code: "SW_FILE_NOT_FOUND",
+      message: "that identity is not on the device \u2014 or, on a PIN verb, there is no PIN set yet"
+    },
     27268: { code: "SW_FILE_FULL", message: "that slot is occupied \u2014 delete it first" },
     27270: { code: "SW_INCORRECT_PARAMS", message: "the device refused the parameters" },
     27271: { code: "SW_LC_INCONSISTENT", message: "the device refused the command length" },
@@ -41,7 +44,21 @@
     // exists so the client never provokes that one).
     27013: { code: "SW_TOUCH_REQUIRED", message: "touch timed out \u2014 the device asked for a touch and none came" },
     27904: { code: "SW_INS_NOT_SUPPORTED", message: "the device does not serve that command" },
-    28416: { code: "SW_STORE_FAULT", message: "the device could not complete the operation \u2014 its store faulted" }
+    28416: { code: "SW_STORE_FAULT", message: "the device could not complete the operation \u2014 its store faulted" },
+    // The PIN custody rows (US-1705). 63C1..63C3 are the wrong-PIN answers
+    // — the low byte IS the attempts remaining — and 63C0 is the same
+    // range's floor: the lockout, whose only recovery is management RESET.
+    25539: { code: "SW_PIN_RETRIES", message: "wrong PIN \u2014 3 attempts left", attempts: 3 },
+    25538: { code: "SW_PIN_RETRIES", message: "wrong PIN \u2014 2 attempts left", attempts: 2 },
+    25537: { code: "SW_PIN_RETRIES", message: "wrong PIN \u2014 1 attempt left", attempts: 1 },
+    25536: {
+      code: "SW_PIN_LOCKED",
+      message: "the device is locked \u2014 too many wrong PINs. Recovery is a factory reset, which destroys every identity"
+    },
+    27010: {
+      code: "SW_PIN_SESSION_REQUIRED",
+      message: "the device requires its PIN before this operation \u2014 verify to continue"
+    }
   };
   function describeSw(sw) {
     const known = SW_ERROR_MAP[sw];
@@ -195,7 +212,14 @@
     IMPORT_KEY: 71,
     EXPORT_KEY: 72,
     DELETE_KEY: 73,
-    SET_LABEL: 74
+    SET_LABEL: 74,
+    // The PIN custody dialect (US-1691..1694, US-1702) — touch-free by
+    // design: the PIN is the consent. SET_PIN's envelope idx rides P1 on
+    // the device, so 0 selects SET (establish custody) and 1 selects
+    // CHANGE (verify-the-current-PIN ceremony).
+    VERIFY_PIN: 75,
+    SET_PIN: 76,
+    LOCK: 77
   };
   var SW = {
     OK: 36864,
@@ -203,7 +227,14 @@
     CONDITIONS_NOT_SATISFIED: 27013,
     // the touch-required word
     INS_NOT_SUPPORTED: 27904,
-    STORE_FAULT: 28416
+    STORE_FAULT: 28416,
+    // The PIN custody vocabulary (US-1691). PIN_NOT_SET shares 0x6a82 with
+    // the file-not-found word — the same state word, read by context; the
+    // error map carries the sentence. 63c0 is the bottom of the same 63CX
+    // range a wrong PIN answers with: the lockout and "no attempts left"
+    // are one word.
+    PIN_SESSION_REQUIRED: 27010,
+    PIN_LOCKED: 25536
   };
   var BROADCAST_CID = new Uint8Array([255, 255, 255, 255]);
   var DEFAULT_TIMEOUT_MS = 3e4;
@@ -7443,7 +7474,30 @@
     }
   };
 
+  // src/worker/pin_flow.js
+  function parseInfoBody(data) {
+    if (!data || data.length < 7) return null;
+    const flags = data.length >= 8 ? data[7] : 0;
+    return {
+      appletVer: [data[0], data[1]],
+      caps: data[2] << 8 | data[3],
+      maxPlaintext: data[4] << 8 | data[5],
+      nIdentities: data[6],
+      flags
+    };
+  }
+
   // src/worker/handlers.js
+  function pinBytes(pin) {
+    const bytes = new TextEncoder().encode(pin);
+    if (bytes.length < 6 || bytes.length > 64) {
+      throw Object.assign(new Error("the PIN is 6..64 characters"), {
+        name: "SignerError",
+        code: "BAD_PIN"
+      });
+    }
+    return bytes;
+  }
   function createHandlers({
     device,
     consent = async ({ method }) => ({ remember: false }),
@@ -7508,7 +7562,8 @@
       device_status: async () => {
         try {
           const res = await device.ping();
-          return { state: res.sw === SW.OK ? "connected" : "error", sw: res.sw };
+          if (res.sw !== SW.OK) return { state: "error", sw: res.sw };
+          return { state: "connected", sw: res.sw, info: parseInfoBody(res.data) };
         } catch (err) {
           if (err instanceof DeviceAbsentError || err?.code === "DEVICE_ABSENT") {
             return { state: "absent", code: "DEVICE_ABSENT" };
@@ -7602,6 +7657,29 @@
           });
         }
         await runOk(NOSTR_CMD.SET_LABEL, slot, bytes);
+        return {};
+      },
+      // --- PIN custody (US-1705) — touch-free: the PIN is the consent ----
+      verify_pin: async ([pin]) => {
+        await runOk(NOSTR_CMD.VERIFY_PIN, 0, pinBytes(pin));
+        return {};
+      },
+      set_pin: async ([pin]) => {
+        await runOk(NOSTR_CMD.SET_PIN, 0, pinBytes(pin));
+        return {};
+      },
+      change_pin: async ([current, next]) => {
+        const cur = pinBytes(current);
+        const nxt = pinBytes(next);
+        const arg = new Uint8Array(1 + cur.length + nxt.length);
+        arg[0] = cur.length;
+        arg.set(cur, 1);
+        arg.set(nxt, 1 + cur.length);
+        await runOk(NOSTR_CMD.SET_PIN, 1, arg);
+        return {};
+      },
+      lock: async () => {
+        await runOk(NOSTR_CMD.LOCK, 0, new Uint8Array(0));
         return {};
       },
       export_key: async ([slot]) => {

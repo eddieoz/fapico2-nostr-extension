@@ -6957,7 +6957,10 @@
   var SW_ERROR_MAP = {
     36864: { code: "OK", message: "ok" },
     27264: { code: "SW_WRONG_DATA", message: "the device refused the data \u2014 it could not read the request" },
-    27266: { code: "SW_FILE_NOT_FOUND", message: "that identity is not on the device" },
+    27266: {
+      code: "SW_FILE_NOT_FOUND",
+      message: "that identity is not on the device \u2014 or, on a PIN verb, there is no PIN set yet"
+    },
     27268: { code: "SW_FILE_FULL", message: "that slot is occupied \u2014 delete it first" },
     27270: { code: "SW_INCORRECT_PARAMS", message: "the device refused the parameters" },
     27271: { code: "SW_LC_INCONSISTENT", message: "the device refused the command length" },
@@ -6968,7 +6971,21 @@
     // exists so the client never provokes that one).
     27013: { code: "SW_TOUCH_REQUIRED", message: "touch timed out \u2014 the device asked for a touch and none came" },
     27904: { code: "SW_INS_NOT_SUPPORTED", message: "the device does not serve that command" },
-    28416: { code: "SW_STORE_FAULT", message: "the device could not complete the operation \u2014 its store faulted" }
+    28416: { code: "SW_STORE_FAULT", message: "the device could not complete the operation \u2014 its store faulted" },
+    // The PIN custody rows (US-1705). 63C1..63C3 are the wrong-PIN answers
+    // — the low byte IS the attempts remaining — and 63C0 is the same
+    // range's floor: the lockout, whose only recovery is management RESET.
+    25539: { code: "SW_PIN_RETRIES", message: "wrong PIN \u2014 3 attempts left", attempts: 3 },
+    25538: { code: "SW_PIN_RETRIES", message: "wrong PIN \u2014 2 attempts left", attempts: 2 },
+    25537: { code: "SW_PIN_RETRIES", message: "wrong PIN \u2014 1 attempt left", attempts: 1 },
+    25536: {
+      code: "SW_PIN_LOCKED",
+      message: "the device is locked \u2014 too many wrong PINs. Recovery is a factory reset, which destroys every identity"
+    },
+    27010: {
+      code: "SW_PIN_SESSION_REQUIRED",
+      message: "the device requires its PIN before this operation \u2014 verify to continue"
+    }
   };
 
   // src/popup/keys.js
