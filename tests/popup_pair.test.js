@@ -9,6 +9,10 @@ import assert from 'node:assert/strict';
 
 import { createPairing, VENDOR_FILTER } from '../src/popup/pairing.js';
 
+// US-1706 — a representative parsed GET_INFO body: v0.2 applet, all caps,
+// PIN set (bit0), session locked (bit1 clear).
+const INFO = { appletVer: [0, 2], caps: 0x0007, maxPlaintext: 1891, nIdentities: 0, flags: 0x01 };
+
 function rig({ requestDeviceImpl } = {}) {
   const calls = [];
   let requestDeviceCalls = 0;
@@ -21,10 +25,10 @@ function rig({ requestDeviceImpl } = {}) {
     calls.push({ method, args });
     if (method === 'device_status') {
       return calls.filter((c) => c.method === 'device_status').length <= 1
-        ? { state: 'connected' }
+        ? { state: 'connected', info: INFO }
         : { state: 'error', code: 'DEVICE_ABSENT' };
     }
-    if (method === 'pair_device') return { state: 'connected' };
+    if (method === 'pair_device') return { state: 'connected', sw: 0x9000, info: INFO };
     throw new Error(`unexpected call ${method}`);
   };
   const persisted = [];
@@ -80,5 +84,21 @@ test('US-1702 health-check state transitions: connected → absent is the loud s
 test('US-1702 the last health answer is persisted so the popup reopens to truth', async () => {
   const { pairing, persisted } = rig();
   await pairing.health({ force: true });
-  assert.deepEqual(persisted.at(-1), { state: 'connected' });
+  // US-1706 — the parsed GET_INFO body rides the persisted card so a reopen
+  // can derive the PIN surface before the first fresh probe answers.
+  assert.deepEqual(persisted.at(-1), { state: 'connected', info: INFO });
+});
+
+test('US-1706 the health answer carries the parsed GET_INFO body for the PIN surface', async () => {
+  const { pairing } = rig();
+  const h = await pairing.health({ force: true });
+  assert.equal(h.state, 'connected');
+  assert.equal(h.info?.caps, 0x0007, 'CAP_KEY_MGMT | CAP_NIP44 | CAP_PIN_MGMT');
+  assert.equal(h.info?.flags, 0x01, 'bit0 = a PIN is set');
+});
+
+test('US-1706 the pair_device answer carries the GET_INFO body too', async () => {
+  const { pairing } = rig();
+  const h = await pairing.connect();
+  assert.deepEqual(h, { state: 'connected', info: INFO });
 });

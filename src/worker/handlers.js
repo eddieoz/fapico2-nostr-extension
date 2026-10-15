@@ -135,13 +135,19 @@ export function createHandlers({
 
     // US-1702: the popup drives the chooser itself (a user gesture), then
     // tells the worker to adopt the granted device — the worker still never
-    // opens a chooser.
+    // opens a chooser. US-1706 — the answer carries the parsed GET_INFO body
+    // so the connect flow can derive the PIN surface the same way
+    // device_status does; a first pair is the first offer opportunity.
     pair_device: async () => {
       device.forget();
       // The user just chose the device: this probe bypasses the 1 s window
       // (it IS the connect flow, not a background poll).
       const res = await device.ping({ force: true });
-      return { state: res.sw === SW.OK ? 'connected' : 'error', sw: res.sw };
+      return {
+        state: res.sw === SW.OK ? 'connected' : 'error',
+        sw: res.sw,
+        info: parseInfoBody(res.data),
+      };
     },
 
     get_active_slot: async () => ({ slot: await activeSlot() }),

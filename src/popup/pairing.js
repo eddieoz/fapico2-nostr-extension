@@ -26,9 +26,13 @@ export function createPairing({ requestDevice, call, persist = () => {}, now = (
       // forgets any stale transport and re-pings the interface. Its answer
       // IS the card state — a second probe here would trip the worker's
       // 1 s rate window and paint a working device as "device error".
+      // US-1706 — the parsed GET_INFO body rides along so the PIN surface
+      // derives from the same answer that says "connected".
       const res = await call('pair_device');
       lastHealth =
-        res.state === 'connected' ? { state: 'connected' } : { state: 'error', message: res.message };
+        res.state === 'connected'
+          ? { state: 'connected', info: res.info ?? null }
+          : { state: 'error', message: res.message };
       persist(lastHealth);
       return lastHealth;
     },
@@ -40,9 +44,13 @@ export function createPairing({ requestDevice, call, persist = () => {}, now = (
       lastProbeAt = t;
       try {
         const res = await call('device_status');
+        // US-1706 — `info` (the GET_INFO body) is what the PIN custody UI
+        // derives from: capability bits, PIN-set and session-unlocked flags.
+        // It rides the health answer; a state without a body degrades to
+        // null and every PIN surface hides.
         lastHealth =
           res.state === 'connected'
-            ? { state: 'connected' }
+            ? { state: 'connected', info: res.info ?? null }
             : res.state === 'busy'
               ? { state: 'busy' } // the probe window, not the device — amber, retried
               : res.code === 'DEVICE_ABSENT'
