@@ -1,17 +1,75 @@
+# Release automation: pushing a v* tag (the house convention — annotated
+# vX.Y.Z tags like v0.3.0) opens a GitHub Release whose asset is the tagged
+# dist/ tree as one zip. The tag itself is the human release decision (the
+# hardware ceremony is run before tagging, per README's Release gate), so the
+# release is published, not drafted.
+#
+# A tag push does not match ci.yml's branches: [main] filter, so this job is
+# the only run for the tag event; the branch push that carried the version
+# still runs the full ci gate (including the CDP smoke) separately.
 name: release
 
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
 
 permissions:
-  releases: write
+  contents: write
 
 jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # on a tag-push event checkout checks out the tag ref itself, so the
+      # dist/ on disk is exactly the tagged bytes, not HEAD
       - uses: actions/checkout@v4
-      - run: echo "release workflow test"
+      - uses: pnpm/action-setup@v4
+        # the version comes from package.json's packageManager field —
+        # passing one here too would be "Multiple versions of pnpm specified"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # the README's release gate: CI must be green at the tag or no release
+      # is cut — check is build + freshness diff + tests (pnpm test rebuilds
+      # first, so the freshness diff lands inside it)
+      - name: the tag must be CI-green (pnpm run check)
+        run: pnpm run check
+
+      - name: zip the tagged dist/ and open the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          ZIP="fapico2-nostr-extension-${TAG}-dist.zip"
+
+          # git archive from HEAD (the tag commit) over tracked paths only:
+          # byte-reproducible, no mtimes, keeps the dist/ tree prefix
+          git archive --format=zip --output="$ZIP" HEAD dist/
+
+          # notes: the annotated tag message carries the release summary and
+          # the ceremony reference; contents:body strips the subject line and
+          # the PGP signature block (plain %(contents) would embed the
+          # signature). A lightweight tag (like v0.2.0) has no message of its
+          # own, so fall back to the tag target's commit body
+          NOTES="$(git tag -l --format='%(contents:body)' "$TAG")"
+          if [ -z "$NOTES" ]; then
+            NOTES="$(git log -1 --format=%B "$TAG")"
+          fi
+          printf '%s\n' "$NOTES" > notes.md
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # re-pushing a tag (or a force-moved tag) must not duplicate or
+            # fail — refresh the existing release in place
+            gh release edit "$TAG" --notes-file notes.md
+            gh release upload "$TAG" "$ZIP" --clobber
+          else
+            gh release create "$TAG" \
+              --title "fapico2-nostr-extension ${TAG}" \
+              --target "$(git rev-parse HEAD)" \
+              --notes-file notes.md \
+              "$ZIP"
+          fi
