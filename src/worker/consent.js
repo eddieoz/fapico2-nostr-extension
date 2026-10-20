@@ -43,7 +43,11 @@ export function makeSettleNotifier(prompt, requestId) {
  * `permissions` is the US-1699 store; `prompt` the US-1700 flow. `hostOf`
  * is injectable for tests; production derives it from sender.url — the
  * page's own location.host (attached by the provider) is untrusted data and
- * is used only as a display cross-check.
+ * is used only as a display cross-check. `portName` (the option) is the
+ * fallback for a direct call with no port; the per-call `portName` string
+ * (US-1751, threaded from the handler's ctx.port.name) is the port the
+ * bridge actually reopens after a worker restart, and it wins — the record
+ * must be keyed by a port that will reconnect, or re-delivery strands it.
  */
 export function createConsentGate({
   permissions,
@@ -54,7 +58,7 @@ export function createConsentGate({
   previewOf = null,
   devicePresent = null,
 } = {}) {
-  return async function consent({ method, args, sender, requestId, preview }) {
+  return async function consent({ method, args, sender, requestId, preview, portName: reconnectingPortName }) {
     const host = hostOf(sender);
     const granted = await permissions.check(host, method);
     if (granted) return { host, method, grant: granted };
@@ -73,7 +77,7 @@ export function createConsentGate({
         method,
         preview: shown,
         host,
-        portName: portName(sender),
+        portName: reconnectingPortName ?? portName(sender),
       });
     }
     let decision;

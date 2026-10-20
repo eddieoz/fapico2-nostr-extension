@@ -81,6 +81,10 @@ export function createHandlers({
         sender: ctx.sender,
         requestId: ctx.requestId,
         preview: previewOf?.(method, args),
+        // US-1751 — the record is keyed by the port the bridge actually
+        // reopens after a worker restart (port.name, nostr-<random>), not the
+        // constant 'nostr-consent' that no connecting port ever uses.
+        portName: ctx.port?.name,
       });
       notifySettle = result?.notifySettle;
     }

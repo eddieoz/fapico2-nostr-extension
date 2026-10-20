@@ -768,14 +768,19 @@
         }
         return interrupted;
       },
-      /** Settled-but-undelivered records for one port name, removed on take. */
+      /** Settled-but-undelivered records for one port name, removed on take.
+       *  US-1751 — the reply echoes the BARE frame id: the record's id is the
+       *  dispatch composite (portName/frameId, dispatch.js), but the provider's
+       *  pending map matches by the bare id the call was made with. A bare id
+       *  (a direct call with no port) passes through unchanged. */
       async takeForPort(portName) {
         if (!loaded) await this.load();
         const out = [];
         for (const r of [...records.values()]) {
           if (r.portName !== portName) continue;
           if (r.state === "settled" && r.outcome) {
-            out.push({ id: r.id, ...r.outcome });
+            const slash = r.id.indexOf("/");
+            out.push({ id: slash === -1 ? r.id : r.id.slice(slash + 1), ...r.outcome });
             await this.forget(r.id);
           }
         }
@@ -7786,7 +7791,11 @@
           args,
           sender: ctx.sender,
           requestId: ctx.requestId,
-          preview: previewOf?.(method, args)
+          preview: previewOf?.(method, args),
+          // US-1751 — the record is keyed by the port the bridge actually
+          // reopens after a worker restart (port.name, nostr-<random>), not the
+          // constant 'nostr-consent' that no connecting port ever uses.
+          portName: ctx.port?.name
         });
         notifySettle = result?.notifySettle;
       }
@@ -8287,7 +8296,7 @@
     previewOf = null,
     devicePresent = null
   } = {}) {
-    return async function consent({ method, args, sender, requestId, preview }) {
+    return async function consent({ method, args, sender, requestId, preview, portName: reconnectingPortName }) {
       const host = hostOf(sender);
       const granted = await permissions.check(host, method);
       if (granted) return { host, method, grant: granted };
@@ -8299,7 +8308,7 @@
           method,
           preview: shown,
           host,
-          portName: portName(sender)
+          portName: reconnectingPortName ?? portName(sender)
         });
       }
       let decision;

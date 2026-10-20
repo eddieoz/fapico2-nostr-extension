@@ -90,14 +90,19 @@ export function createPendingStore({ storage, windowExists = () => false } = {})
       return interrupted;
     },
 
-    /** Settled-but-undelivered records for one port name, removed on take. */
+    /** Settled-but-undelivered records for one port name, removed on take.
+     *  US-1751 — the reply echoes the BARE frame id: the record's id is the
+     *  dispatch composite (portName/frameId, dispatch.js), but the provider's
+     *  pending map matches by the bare id the call was made with. A bare id
+     *  (a direct call with no port) passes through unchanged. */
     async takeForPort(portName) {
       if (!loaded) await this.load();
       const out = [];
       for (const r of [...records.values()]) {
         if (r.portName !== portName) continue;
         if (r.state === 'settled' && r.outcome) {
-          out.push({ id: r.id, ...r.outcome });
+          const slash = r.id.indexOf('/');
+          out.push({ id: slash === -1 ? r.id : r.id.slice(slash + 1), ...r.outcome });
           await this.forget(r.id);
         }
       }
