@@ -26,13 +26,26 @@ function utf8ToHex(s) {
   return [...utf8.encode(s)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+// US-1748 — an unguessable v4 UUID from crypto.getRandomValues, which is
+// available in every context (randomUUID is secure-context-only, and the
+// manifest matches <all_urls> including http://, where it would be undefined
+// and every call would throw). The id stops being a predictable p0, p1, …
+// counter: the page can no longer pre-forge a reply for a call it has not
+// observed, because the reply listener drops non-pending ids.
+function randomUUID() {
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40; // version 4
+  b[8] = (b[8] & 0x3f) | 0x80; // variant 10
+  const h = [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
 /**
  * Install `window.nostr`. Returns false when a provider already holds the
  * slot (never-clobber). `win` is the page's window.
  */
 export function installProvider(win) {
   if (win.nostr) return false;
-  let seq = 0;
   const pending = new Map();
 
   win.addEventListener('message', (ev) => {
@@ -49,7 +62,7 @@ export function installProvider(win) {
 
   const call = (method, ...args) =>
     new Promise((resolve, reject) => {
-      const id = `p${seq++}`;
+      const id = randomUUID();
       pending.set(id, { resolve, reject });
       win.postMessage(
         { marker: NOSTR_MARKER, dir: 'call', id, method, args, host: win.location.host },

@@ -18,9 +18,15 @@
   function utf8ToHex(s) {
     return [...utf8.encode(s)].map((b) => b.toString(16).padStart(2, "0")).join("");
   }
+  function randomUUID() {
+    const b = crypto.getRandomValues(new Uint8Array(16));
+    b[6] = b[6] & 15 | 64;
+    b[8] = b[8] & 63 | 128;
+    const h = [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+    return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+  }
   function installProvider(win) {
     if (win.nostr) return false;
-    let seq = 0;
     const pending = /* @__PURE__ */ new Map();
     win.addEventListener("message", (ev) => {
       if (ev.source !== win) return;
@@ -33,7 +39,7 @@
       else p.resolve(d.reply?.result);
     });
     const call = (method, ...args) => new Promise((resolve, reject) => {
-      const id = `p${seq++}`;
+      const id = randomUUID();
       pending.set(id, { resolve, reject });
       win.postMessage(
         { marker: NOSTR_MARKER, dir: "call", id, method, args, host: win.location.host },
