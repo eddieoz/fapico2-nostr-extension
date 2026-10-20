@@ -142,14 +142,24 @@ test('US-1672 the keepalive holds the service worker for the ceremony and stops 
 });
 
 test('US-1672 the touch-window countdown reports remaining time and ends at zero', (t) => {
-  t.mock.timers.enable({ apis: ['setInterval', 'Date'] });
+  // The countdown's clock is injected (batch.js `now`), not the mocked
+  // Date: Node 24's t.mock.timers sets Date.now() to the *final* tick value
+  // for every interval fire in a batch, so a Date-driven countdown sees
+  // remaining=0 on its first tick and stops. Advancing a test-owned clock
+  // in 10 ms steps restores the incremental 30/20/10/0 the window reports.
+  t.mock.timers.enable({ apis: ['setInterval'] });
+  let nowMs = 0;
   const ticks = [];
   const countdown = startWindowCountdown({
     windowMs: 40,
     tickMs: 10,
     onTick: (remainingMs) => ticks.push(remainingMs),
+    now: () => nowMs,
   });
-  t.mock.timers.tick(40);
+  for (let i = 0; i < 4; i++) {
+    nowMs += 10;
+    t.mock.timers.tick(10);
+  }
   assert.ok(ticks.length >= 3, 'it ticked across the window');
   assert.equal(ticks.at(-1), 0, 'the window ends at zero, not by silence');
   assert.ok(
