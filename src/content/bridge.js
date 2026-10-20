@@ -43,7 +43,7 @@ export function injectProvider(win, { url } = {}) {
  * `(name) => Port` with `{postMessage, onMessage, onDisconnect}`. Returns
  * the message handler to attach to the frame's 'message' events.
  */
-export function createBridgeRelay({ win, connect, warn = console.warn }) {
+export function createBridgeRelay({ win, connect, warn = console.warn, channel = new MessageChannel() }) {
   let port = null;
   let seq = 0;
   const portName = `nostr-${Math.floor(Math.random() * 1e9).toString(36)}`;
@@ -51,8 +51,8 @@ export function createBridgeRelay({ win, connect, warn = console.warn }) {
   // receives. The bridge keeps port1 and sends every reply over it; the
   // provider claims port2 through the one-time handshake below. A page-forged
   // window reply is ignored because the page never got port2 (unless it claimed
-  // it during the handshake — the honest limit, R-4).
-  const channel = new MessageChannel();
+  // it during the handshake — the honest limit, R-4). `channel` is injectable
+  // so tests can inspect port2 and close the ports (open ports keep Node alive).
   let handshakeSent = false;
 
   function ensurePort() {

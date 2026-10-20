@@ -48,6 +48,7 @@ const port = fakePort();
 function wiredRelay(win) {
   const warns = [];
   const localPort = fakePort();
+  const channel = new MessageChannel();
   const relay = createBridgeRelay({
     win,
     connect: (name) => {
@@ -55,10 +56,15 @@ function wiredRelay(win) {
       return localPort;
     },
     warn: (m) => warns.push(m),
+    channel,
   });
   win.addEventListener('message', relay);
-  return { relay, warns, port: localPort };
+  return { relay, warns, port: localPort, channel };
 }
+const closeChannel = (channel) => {
+  channel.port1.close();
+  channel.port2.close(); // open ports keep Node's event loop alive
+};
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const waitFor = async (fn, timeoutMs = 500) => {
@@ -70,14 +76,12 @@ const waitFor = async (fn, timeoutMs = 500) => {
   return fn();
 };
 
-test('US-1698 a page call forwards over the port and the reply crosses back', async () => {
+test('US-1698 a page call forwards over the port and the reply crosses back on the channel', async () => {
   const win = fakeWindow();
-  const { warns, port: port } = wiredRelay(win);
+  const { warns, port: port, channel } = wiredRelay(win);
+  // US-1749 — the reply crosses the MessageChannel (port2), not the window.
   const replies = [];
-  win.__listeners.push((ev) => {
-    const d = ev.data;
-    if (d?.dir === 'reply') replies.push(d);
-  });
+  channel.port2.onmessage = (ev) => replies.push(ev.data);
 
   win.postMessage(
     { marker: NOSTR_MARKER, dir: 'call', id: 'p0', method: 'get_public_key', args: [], host: 'signing.example' },
@@ -91,14 +95,15 @@ test('US-1698 a page call forwards over the port and the reply crosses back', as
   port.__deliver({ id: 'p0', result: 'ee'.repeat(32) });
   await waitFor(() => replies.length === 1);
   assert.equal(replies.length, 1);
-  assert.equal(replies[0].dir, 'reply');
+  assert.equal(replies[0].id, 'p0');
   assert.equal(replies[0].reply.result, 'ee'.repeat(32));
   assert.deepEqual(warns, []);
+  closeChannel(channel);
 });
 
 test('US-1698 a method not in the allow-list is refused loudly, and the port never sees it', async () => {
   const win = fakeWindow();
-  const { warns, port: port } = wiredRelay(win);
+  const { warns, port: port, channel } = wiredRelay(win);
   const replies = [];
   win.__listeners.push((ev) => {
     if (ev.data?.dir === 'reply') replies.push(ev.data);
@@ -112,30 +117,34 @@ test('US-1698 a method not in the allow-list is refused loudly, and the port nev
   assert.equal(port.sent.length, 0, 'the port was never woken');
   assert.equal(replies[0].reply.error.code, 'forbidden-method');
   assert.equal(warns.length, 1, 'the refusal is loud on the console too');
+  closeChannel(channel);
 });
 
 test('US-1698 a foreign marker is ignored in silence', async () => {
   const win = fakeWindow();
-  const { warns, port: port } = wiredRelay(win);
+  const { warns, port: port, channel } = wiredRelay(win);
   win.postMessage({ marker: 'other-extension:1', dir: 'call', id: 'p2', method: 'sign_event', args: [] }, win.location.origin);
   win.postMessage({ random: 'traffic' }, win.location.origin);
   await sleep(10);
   assert.equal(port.sent.length, 0);
   assert.deepEqual(warns, [], 'silence for foreign markers — no console noise');
+  closeChannel(channel);
 });
 
 test('US-1698 a cross-frame source is dropped (the same-frame guard)', async () => {
   const win = fakeWindow();
-  const relay = createBridgeRelay({ win, connect: () => fakePort() });
+  const channel = new MessageChannel();
+  const relay = createBridgeRelay({ win, connect: () => fakePort(), channel });
   // An event whose source is another frame (an iframe, another window).
   relay({ source: { other: true }, data: { marker: NOSTR_MARKER, dir: 'call', id: 'p3', method: 'sign_event', args: [] } });
   await sleep(10);
   assert.equal(port.sent.length, 0);
+  closeChannel(channel);
 });
 
 test('US-1698 an oversized payload is dropped loudly, with a typed reply', async () => {
   const win = fakeWindow();
-  const { warns, port: port } = wiredRelay(win);
+  const { warns, port: port, channel } = wiredRelay(win);
   const replies = [];
   win.__listeners.push((ev) => {
     if (ev.data?.dir === 'reply') replies.push(ev.data);
@@ -149,6 +158,7 @@ test('US-1698 an oversized payload is dropped loudly, with a typed reply', async
   assert.equal(port.sent.length, 0);
   assert.equal(replies[0].reply.error.code, 'payload-too-large');
   assert.equal(warns.length, 1);
+  closeChannel(channel);
 });
 
 test('US-1698 the port reconnects on worker restart — the next call reopens it', async () => {
@@ -156,6 +166,7 @@ test('US-1698 the port reconnects on worker restart — the next call reopens it
   let opens = 0;
   const ports = [];
   const warns = [];
+  const channel = new MessageChannel();
   const relay = createBridgeRelay({
     win,
     connect: (name) => {
@@ -166,6 +177,7 @@ test('US-1698 the port reconnects on worker restart — the next call reopens it
       return p;
     },
     warn: (m) => warns.push(m),
+    channel,
   });
   win.addEventListener('message', relay);
 
@@ -177,4 +189,5 @@ test('US-1698 the port reconnects on worker restart — the next call reopens it
   await sleep(2);
   assert.equal(opens, 2, 'the next call reopened the port');
   assert.equal(ports[1].__name, ports[0].__name, 'the same name — US-1695 re-delivery rides it');
+  closeChannel(channel);
 });

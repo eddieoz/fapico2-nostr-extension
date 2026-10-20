@@ -27,11 +27,10 @@
     (doc.head ?? doc.documentElement).appendChild(script);
     return script;
   }
-  function createBridgeRelay({ win, connect, warn = console.warn }) {
+  function createBridgeRelay({ win, connect, warn = console.warn, channel = new MessageChannel() }) {
     let port = null;
     let seq = 0;
     const portName = `nostr-${Math.floor(Math.random() * 1e9).toString(36)}`;
-    const channel = new MessageChannel();
     let handshakeSent = false;
     function ensurePort() {
       if (port) return port;
