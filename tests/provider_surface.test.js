@@ -30,20 +30,39 @@ function fakeWindow() {
 }
 
 /** Wire the provider to a scripted relay half (stand-in for bridge+worker):
- *  answers each call frame through the same window, like the bridge does. */
+ *  answer the one-time init with the handshake (port2), and deliver each call's
+ *  reply over port1 — which the provider reads on port2 (US-1749). Returns the
+ *  channel so the test can close its ports (open ports keep Node alive). */
 function wireResponder(win, respond) {
+  const channel = new MessageChannel();
   win.__listeners.push((ev) => {
     const d = ev.data;
-    if (!d || d.marker !== NOSTR_MARKER || d.dir !== 'call') return;
+    if (!d || d.marker !== NOSTR_MARKER) return;
+    if (d.dir === 'init') {
+      setImmediate(() =>
+        win.postMessage(
+          { marker: NOSTR_MARKER, dir: 'handshake', port: channel.port2 },
+          win.location.origin,
+          [channel.port2],
+        ),
+      );
+      return;
+    }
+    if (d.dir !== 'call') return;
     setImmediate(() => {
       const reply = respond(d);
-      win.postMessage(
-        { marker: NOSTR_MARKER, dir: 'reply', id: d.id, reply },
-        win.location.origin,
-      );
+      channel.port1.postMessage({ id: d.id, reply });
     });
   });
+  return channel;
 }
+const closeChannel = (channel) => {
+  channel.port1.close();
+  channel.port2.close();
+};
+// The handshake completes a few ticks after install; wait for it before any
+// call, or the reply is delivered to a port the provider has not claimed.
+const handshake = () => new Promise((r) => setTimeout(r, 10));
 
 test('US-1697 the surface is exactly the NIP-07 trio plus nip44', () => {
   const win = fakeWindow();
@@ -66,11 +85,12 @@ test('US-1697 injection never clobbers an existing provider', () => {
 test('US-1697 every call attaches the host — the prompt window renders it', async () => {
   const win = fakeWindow();
   const seen = [];
-  wireResponder(win, (d) => {
+  const channel = wireResponder(win, (d) => {
     seen.push(d);
     return { result: 'aa'.repeat(32) };
   });
   installProvider(win);
+  await handshake();
   await win.nostr.getPublicKey();
   await win.nostr.nip44.encrypt('bb'.repeat(32), 'hello');
   assert.equal(seen[0].host, 'signing.example');
@@ -78,25 +98,28 @@ test('US-1697 every call attaches the host — the prompt window renders it', as
   assert.equal(seen[0].dir, 'call');
   assert.equal(seen[0].marker, NOSTR_MARKER);
   assert.equal(seen[0].method, 'get_public_key');
+  closeChannel(channel);
 });
 
 test('US-1697 signEvent sends the event as the page provided — the worker hashes', async () => {
   const win = fakeWindow();
   const seen = [];
-  wireResponder(win, (d) => {
+  const channel = wireResponder(win, (d) => {
     seen.push(d);
     return { result: { id: 'x', sig: 'y' } };
   });
   installProvider(win);
+  await handshake();
   const event = { kind: 1, content: 'hi', tags: [], created_at: 7 };
   const out = await win.nostr.signEvent(event);
   assert.deepEqual(seen[0].args, [event], 'the event crosses untouched (no sighash computed in the page)');
   assert.deepEqual(out, { id: 'x', sig: 'y' });
+  closeChannel(channel);
 });
 
 test('US-1697 nip44.encrypt passes utf8 hex; nip44.decrypt returns the plaintext string', async () => {
   const win = fakeWindow();
-  wireResponder(win, (d) => {
+  const channel = wireResponder(win, (d) => {
     if (d.method === 'nip44_encrypt') {
       assert.equal(d.args[0], 'bb'.repeat(32));
       // 'hello' in hex.
@@ -112,15 +135,17 @@ test('US-1697 nip44.encrypt passes utf8 hex; nip44.decrypt returns the plaintext
     return { error: { name: 'UnsupportedMethodError', code: 'unsupported-method', message: 'x' } };
   });
   installProvider(win);
+  await handshake();
   const payload = await win.nostr.nip44.encrypt('bb'.repeat(32), 'hello');
   assert.equal(payload, 'cafecafecafecafe', 'the raw payload crosses as the device produced it');
   const pt = await win.nostr.nip44.decrypt('cc'.repeat(32), 'aabbccdd');
   assert.equal(pt, 'fine');
+  closeChannel(channel);
 });
 
 test('US-1697 a reply naming an error rejects with the typed error revived (name preserved)', async () => {
   const win = fakeWindow();
-  wireResponder(win, (d) => ({
+  const channel = wireResponder(win, (d) => ({
     error: {
       name: 'DeviceAbsentError',
       code: 'DEVICE_ABSENT',
@@ -129,6 +154,7 @@ test('US-1697 a reply naming an error rejects with the typed error revived (name
     },
   }));
   installProvider(win);
+  await handshake();
   await assert.rejects(
     () => win.nostr.getPublicKey(),
     (err) => {
@@ -138,17 +164,22 @@ test('US-1697 a reply naming an error rejects with the typed error revived (name
       return true;
     },
   );
+  closeChannel(channel);
 });
 
 test('US-1697 foreign and stale replies are ignored; ids do not cross-resolve', async () => {
   const win = fakeWindow();
+  const channel = wireResponder(win, () => ({ result: 'ok' }));
   installProvider(win);
-  // Traffic that is not ours: no throw, no pending state leak.
+  await handshake();
+  // Traffic that is not ours: no throw, no pending state leak. A forged
+  // window reply (dir:'reply') is ignored — the provider reads only the port
+  // (US-1749).
   win.postMessage({ marker: NOSTR_MARKER, dir: 'call', id: 'p999', method: 'nope', args: [] }, win.location.origin);
   win.postMessage({ random: 'traffic' }, win.location.origin);
   win.postMessage({ marker: NOSTR_MARKER, dir: 'reply', id: 'p404', reply: { result: 'ghost' } }, win.location.origin);
   await new Promise((r) => setTimeout(r, 5));
-  // The provider is still usable: a real round trip resolves.
-  wireResponder(win, () => ({ result: 'ok' }));
+  // The provider is still usable: a real round trip resolves over the port.
   assert.equal(await win.nostr.listKeys(), 'ok');
+  closeChannel(channel);
 });

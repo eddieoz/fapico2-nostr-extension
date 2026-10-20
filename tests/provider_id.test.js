@@ -55,21 +55,34 @@ test('US-1748 the call id is a v4 UUID, not the predictable p0 counter', async (
 
 test('US-1748 a reply naming a non-pending id is ignored (the guard that makes the UUID load-bearing)', async () => {
   const win = fakeWindow();
+  const channel = new MessageChannel();
   installProvider(win);
-  // Forge a reply for an id the provider never parked: no throw, no settle.
+  win.__listeners.push((ev) => {
+    const d = ev.data;
+    if (!d || d.marker !== NOSTR_MARKER) return;
+    if (d.dir === 'init') {
+      setImmediate(() =>
+        win.postMessage(
+          { marker: NOSTR_MARKER, dir: 'handshake', port: channel.port2 },
+          win.location.origin,
+          [channel.port2],
+        ),
+      );
+      return;
+    }
+    if (d.dir !== 'call') return;
+    setImmediate(() => channel.port1.postMessage({ id: d.id, reply: { result: 'ok' } }));
+  });
+  await new Promise((r) => setTimeout(r, 10)); // let the handshake claim port2
+  // Forge a window reply for an id the provider never parked: ignored (the
+  // provider reads only the port, US-1749).
   win.postMessage(
     { marker: NOSTR_MARKER, dir: 'reply', id: '00000000-0000-4000-8000-000000000000', reply: { result: 'ghost' } },
     win.location.origin,
   );
   await new Promise((r) => setTimeout(r, 5));
-  // The provider is still usable: a real round trip resolves.
-  win.__listeners.push((ev) => {
-    const d = ev.data;
-    if (d && d.marker === NOSTR_MARKER && d.dir === 'call') {
-      setImmediate(() =>
-        win.postMessage({ marker: NOSTR_MARKER, dir: 'reply', id: d.id, reply: { result: 'ok' } }, win.location.origin),
-      );
-    }
-  });
+  // The provider is still usable: a real round trip resolves over the port.
   assert.equal(await win.nostr.getPublicKey(), 'ok');
+  channel.port1.close();
+  channel.port2.close();
 });

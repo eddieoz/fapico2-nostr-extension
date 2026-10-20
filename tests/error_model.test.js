@@ -142,17 +142,27 @@ test('US-1707 the provider-level revival preserves the name across a simulated f
     addEventListener: (t, f) => listeners.push(f),
     postMessage: (d) => setImmediate(() => listeners.forEach((f) => f({ source: win, data: d }))),
   };
+  const channel = new MessageChannel();
   installProvider(win);
   listeners.push((ev) => {
     const d = ev.data;
-    if (!d || d.marker !== NOSTR_MARKER || d.dir !== 'call') return;
+    if (!d || d.marker !== NOSTR_MARKER) return;
+    if (d.dir === 'init') {
+      setImmediate(() =>
+        win.postMessage(
+          { marker: NOSTR_MARKER, dir: 'handshake', port: channel.port2 },
+          win.location.origin,
+          [channel.port2],
+        ),
+      );
+      return;
+    }
+    if (d.dir !== 'call') return;
     setImmediate(() =>
-      win.postMessage(
-        { marker: NOSTR_MARKER, dir: 'reply', id: d.id, reply: { error: serializeError(new DeviceAbsentError()) } },
-        win.location.origin,
-      ),
+      channel.port1.postMessage({ id: d.id, reply: { error: serializeError(new DeviceAbsentError()) } }),
     );
   });
+  await new Promise((r) => setTimeout(r, 10)); // let the handshake claim port2
   await assert.rejects(
     () => win.nostr.getPublicKey(),
     (err) => {
@@ -161,4 +171,6 @@ test('US-1707 the provider-level revival preserves the name across a simulated f
       return true;
     },
   );
+  channel.port1.close();
+  channel.port2.close();
 });
