@@ -14,6 +14,7 @@ import { parseInfoBody } from './pin_flow.js';
 import { DeviceAbsentError } from '../core/loudness.js';
 import { errSentence, CEREMONY_INTERRUPTED_SENTENCE } from './error-map.js';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
+import { base64 } from '@scure/base';
 
 /** The PIN's wire bytes: 6..64, the applet's payload shape (US-1691). */
 function pinBytes(pin) {
@@ -331,7 +332,23 @@ export function createHandlers({
     nip44_encrypt: pageMethod('nip44_encrypt', async ([peer, plaintext]) =>
       [...(await cipherFor(await activeSlot()).encrypt(peer, hexToBytes(plaintext)))]),
 
-    nip44_decrypt: pageMethod('nip44_decrypt', async ([peer, payload]) =>
-      [...(await cipherFor(await activeSlot()).decrypt(peer, new Uint8Array(payload)))]),
+    // US-1747 — the page sends the NIP-44 v2 payload as base64 (the wire
+    // format); frame the DECODED bytes for the device. The old
+    // `new Uint8Array(payload)` coerced the string to a length — 0 for any
+    // non-numeric base64, a zero-filled array for an all-digit one — so the
+    // device received peer-only and refused. Invalid base64 is a typed
+    // sentence, never a raw @scure/base throw across the port.
+    nip44_decrypt: pageMethod('nip44_decrypt', async ([peer, payload]) => {
+      let decoded;
+      try {
+        decoded = base64.decode(payload);
+      } catch {
+        throw new SignerError(
+          'NIP44_PAYLOAD_MALFORMED',
+          'the NIP-44 payload is not valid base64 — the page must send the v2 wire format',
+        );
+      }
+      return [...(await cipherFor(await activeSlot()).decrypt(peer, decoded))];
+    }),
   };
 }

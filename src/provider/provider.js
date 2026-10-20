@@ -26,12 +26,6 @@ function utf8ToHex(s) {
   return [...utf8.encode(s)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-function hexToUtf8(hex) {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  return decoder.decode(bytes);
-}
-
 /**
  * Install `window.nostr`. Returns false when a provider already holds the
  * slot (never-clobber). `win` is the page's window.
@@ -71,8 +65,13 @@ export function installProvider(win) {
       // NIP-44's plaintext is utf8 text; it crosses as hex so the frame
       // stays JSON-serializable. The worker does the device framing.
       encrypt: (peer, plaintext) => call('nip44_encrypt', peer, utf8ToHex(String(plaintext))),
+      // US-1747 — the worker returns the plaintext as a byte-array (the
+      // device's raw answer, spread for JSON); decode it to utf8 here. The
+      // old hexToUtf8 expected a hex string and mangled the byte-array.
       decrypt: (sender, payload) =>
-        call('nip44_decrypt', sender, payload).then((hex) => hexToUtf8(hex)),
+        call('nip44_decrypt', sender, payload).then(
+          (bytes) => decoder.decode(Uint8Array.from(bytes)),
+        ),
     },
   };
   return true;

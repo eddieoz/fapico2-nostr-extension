@@ -105,8 +105,9 @@ test('US-1697 nip44.encrypt passes utf8 hex; nip44.decrypt returns the plaintext
     }
     if (d.method === 'nip44_decrypt') {
       assert.equal(d.args[1], 'aabbccdd');
-      // 'fine' in hex.
-      return { result: '66696e65' };
+      // The worker returns the plaintext as a byte-array (the device's raw
+      // answer, spread for JSON) — 'fine' as bytes, not a hex string.
+      return { result: [0x66, 0x69, 0x6e, 0x65] };
     }
     return { error: { name: 'UnsupportedMethodError', code: 'unsupported-method', message: 'x' } };
   });
