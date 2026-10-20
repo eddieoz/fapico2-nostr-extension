@@ -147,8 +147,15 @@ test('US-1690 src/core is byte-identical to the OpenXrypt d431b00 originals exce
     ],
   };
 
+  // US-1750 — window_nostr.js is no longer a verbatim port: the dead half
+  // (installPageNostr, attachNostrBridge, createNostrBridge, the PAGE_METHODS
+  // table, and the second marker openxrypt:nostr:1) was never wired into any
+  // bundle and is deleted, leaving only the two live error serializers. Skip
+  // it in the pin; the fixture keeps the marker by design (pinned upstream).
+  const skip = new Set(['window_nostr.js']);
   for (const name of await readdir(coreDir)) {
     if (!name.endsWith('.js')) continue;
+    if (skip.has(name)) continue;
     const orig = await readFile(join(origDir, name), 'utf8');
     const now = await readFile(join(coreDir, name), 'utf8');
     const origLines = orig.split('\n');
