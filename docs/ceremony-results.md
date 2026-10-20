@@ -5,6 +5,38 @@ the six ordered steps, their status words and timings, the operator, and
 the board/firmware it ran against. A partial pass is not a pass — an
 incomplete entry stays open at the top until a complete one supersedes it.
 
+## PENDING — NOSTR-EXT-RT (US-1747/US-1749): decrypt framing + reply port — ceremony owed before release
+
+**Change under record (2026-10-20, main `fdc4269`):** two hardware-adjacent
+behavior changes shipped with the red-team hardening epic.
+
+- **US-1747 — the device now receives real decrypt arguments.** The old
+  `nip44_decrypt` framed `new Uint8Array(payload)` — a base64 string coerced
+  to a length (0 for any non-numeric base64, zero-filled for an all-digit
+  one) — so **every** page decrypt burned a consent touch and then failed
+  WRONG_DATA. The worker now frames `peer(32) ‖ base64.decode(payload)`, the
+  contract `nostr_wire.rs` already pins. Machine-proven: the framed arg is
+  asserted byte-exact against a scripted device double
+  (`tests/nip44_decrypt_frame.test.js`), and the invalid-payload path is a
+  typed refusal **before** any device frame.
+- **US-1749 — the reply channel moved to a MessageChannel port** (browser
+  plumbing, not wire bytes): the device touch flow, consent order, and all
+  status words are unchanged. But every page reply now crosses a port the
+  page never receives, so the whole prompt → touch → reply path deserves one
+  hardware re-verification.
+
+**Machine gates green at this tree:** `pnpm run check` (408 tests, dist/
+fresh) and the CDP smoke run in real Chromium (extension loads from dist/,
+`window.nostr` in the MAIN world, the typed `DeviceAbsentError` round trip
+proves a reply crosses the new port end-to-end).
+
+**What the re-run owes (one full ceremony, supersedes this entry):** the six
+ordered steps, and specifically a **nip44 decrypt round trip on hardware** —
+encrypt on the board, decrypt the payload through a page call, plaintext
+matches — which no prior ceremony ever exercised end to end (the old framing
+made it impossible). A normal site sign through the new reply port closes the
+US-1749 side.
+
 ## PASSED — 2026-10-15, US-1706/US-1707 PIN custody: the full flow on hardware (feat/nostr-pin)
 
 **Board:** fapico2, operator eddieoz — every custody decision on the real
