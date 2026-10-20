@@ -47,6 +47,13 @@ export function createBridgeRelay({ win, connect, warn = console.warn }) {
   let port = null;
   let seq = 0;
   const portName = `nostr-${Math.floor(Math.random() * 1e9).toString(36)}`;
+  // US-1749 — the reply channel: a dedicated MessageChannel the page never
+  // receives. The bridge keeps port1 and sends every reply over it; the
+  // provider claims port2 through the one-time handshake below. A page-forged
+  // window reply is ignored because the page never got port2 (unless it claimed
+  // it during the handshake — the honest limit, R-4).
+  const channel = new MessageChannel();
+  let handshakeSent = false;
 
   function ensurePort() {
     if (port) return port;
@@ -54,10 +61,9 @@ export function createBridgeRelay({ win, connect, warn = console.warn }) {
     port.onMessage.addListener((msg) => {
       if (!msg || typeof msg.id === 'undefined') return;
       const reply = msg.error ? { error: msg.error } : { result: msg.result };
-      win.postMessage(
-        { marker: NOSTR_MARKER, dir: 'reply', id: msg.id, reply },
-        win.location.origin,
-      );
+      // The reply crosses the port, not the window: the provider reads it on
+      // port2, which the page never received.
+      channel.port1.postMessage({ id: msg.id, reply });
     });
     port.onDisconnect.addListener(() => {
       // The worker restarted (US-1695): the next page call reopens the port
@@ -70,7 +76,22 @@ export function createBridgeRelay({ win, connect, warn = console.warn }) {
   return function relay(ev) {
     if (ev.source !== win) return; // same frame only — the isolation boundary
     const d = ev.data;
-    if (!d || d.marker !== NOSTR_MARKER || d.dir !== 'call') return; // foreign marker: silence
+    if (!d || d.marker !== NOSTR_MARKER) return; // foreign marker: silence
+    // US-1749 — the one-time handshake: hand the provider the reply port.
+    // Answered BEFORE the call check, or init is dropped and every call hangs
+    // (the provider has no timeout). One-time: a forged second init is ignored
+    // (port2 is already transferred).
+    if (d.dir === 'init') {
+      if (handshakeSent) return;
+      handshakeSent = true;
+      win.postMessage(
+        { marker: NOSTR_MARKER, dir: 'handshake', port: channel.port2 },
+        win.location.origin,
+        [channel.port2],
+      );
+      return;
+    }
+    if (d.dir !== 'call') return;
     const { id, method, args = [] } = d;
 
     if (!isPageMethod(method)) {

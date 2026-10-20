@@ -31,16 +31,15 @@
     let port = null;
     let seq = 0;
     const portName = `nostr-${Math.floor(Math.random() * 1e9).toString(36)}`;
+    const channel = new MessageChannel();
+    let handshakeSent = false;
     function ensurePort() {
       if (port) return port;
       port = connect(portName);
       port.onMessage.addListener((msg) => {
         if (!msg || typeof msg.id === "undefined") return;
         const reply = msg.error ? { error: msg.error } : { result: msg.result };
-        win.postMessage(
-          { marker: NOSTR_MARKER, dir: "reply", id: msg.id, reply },
-          win.location.origin
-        );
+        channel.port1.postMessage({ id: msg.id, reply });
       });
       port.onDisconnect.addListener(() => {
         port = null;
@@ -50,7 +49,18 @@
     return function relay(ev) {
       if (ev.source !== win) return;
       const d = ev.data;
-      if (!d || d.marker !== NOSTR_MARKER || d.dir !== "call") return;
+      if (!d || d.marker !== NOSTR_MARKER) return;
+      if (d.dir === "init") {
+        if (handshakeSent) return;
+        handshakeSent = true;
+        win.postMessage(
+          { marker: NOSTR_MARKER, dir: "handshake", port: channel.port2 },
+          win.location.origin,
+          [channel.port2]
+        );
+        return;
+      }
+      if (d.dir !== "call") return;
       const { id, method, args = [] } = d;
       if (!isPageMethod(method)) {
         warn(`fapico2 nostr: relayed method "${method}" refused \u2014 not in the page allow-list`);

@@ -47,18 +47,34 @@ function randomUUID() {
 export function installProvider(win) {
   if (win.nostr) return false;
   const pending = new Map();
+  let replyPort = null;
 
+  // US-1749 — claim the reply port from the bridge's one-time handshake. The
+  // bridge transfers port2 through the window; the first receiver to claim it
+  // gets it (a page listener registered before the handshake also receives it
+  // — the honest limit, R-4). Once claimed, replies arrive ONLY on this port:
+  // a page-forged window reply is ignored because the page never received
+  // port2. The window 'reply' direction is no longer read at all.
   win.addEventListener('message', (ev) => {
-    // Same frame only, and only our marker's reply direction.
     if (ev.source !== win) return;
     const d = ev.data;
-    if (!d || d.marker !== NOSTR_MARKER || d.dir !== 'reply') return;
-    const p = pending.get(d.id);
-    if (!p) return;
-    pending.delete(d.id);
-    if (d.reply?.error) p.reject(reviveBridgeError(d.reply.error));
-    else p.resolve(d.reply?.result);
+    if (!d || d.marker !== NOSTR_MARKER || d.dir !== 'handshake') return;
+    if (replyPort) return; // one-time: the first handshake wins
+    replyPort = d.port;
+    replyPort.onmessage = (ev) => {
+      const { id, reply } = ev.data ?? {};
+      const p = pending.get(id);
+      if (!p) return;
+      pending.delete(id);
+      if (reply?.error) p.reject(reviveBridgeError(reply.error));
+      else p.resolve(reply?.result);
+    };
   });
+
+  // The one-time handshake: ask the bridge for the reply port. Posted at
+  // install (document_start), before any page script runs, so the provider
+  // claims port2 before a page listener can.
+  win.postMessage({ marker: NOSTR_MARKER, dir: 'init' }, win.location.origin);
 
   const call = (method, ...args) =>
     new Promise((resolve, reject) => {

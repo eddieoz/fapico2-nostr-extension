@@ -28,16 +28,23 @@
   function installProvider(win) {
     if (win.nostr) return false;
     const pending = /* @__PURE__ */ new Map();
+    let replyPort = null;
     win.addEventListener("message", (ev) => {
       if (ev.source !== win) return;
       const d = ev.data;
-      if (!d || d.marker !== NOSTR_MARKER || d.dir !== "reply") return;
-      const p = pending.get(d.id);
-      if (!p) return;
-      pending.delete(d.id);
-      if (d.reply?.error) p.reject(reviveBridgeError(d.reply.error));
-      else p.resolve(d.reply?.result);
+      if (!d || d.marker !== NOSTR_MARKER || d.dir !== "handshake") return;
+      if (replyPort) return;
+      replyPort = d.port;
+      replyPort.onmessage = (ev2) => {
+        const { id, reply } = ev2.data ?? {};
+        const p = pending.get(id);
+        if (!p) return;
+        pending.delete(id);
+        if (reply?.error) p.reject(reviveBridgeError(reply.error));
+        else p.resolve(reply?.result);
+      };
     });
+    win.postMessage({ marker: NOSTR_MARKER, dir: "init" }, win.location.origin);
     const call = (method, ...args) => new Promise((resolve, reject) => {
       const id = randomUUID();
       pending.set(id, { resolve, reject });
