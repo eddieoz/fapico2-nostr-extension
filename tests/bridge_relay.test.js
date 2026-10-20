@@ -104,10 +104,11 @@ test('US-1698 a page call forwards over the port and the reply crosses back on t
 test('US-1698 a method not in the allow-list is refused loudly, and the port never sees it', async () => {
   const win = fakeWindow();
   const { warns, port: port, channel } = wiredRelay(win);
+  // US-1749 — every reply the bridge produces crosses the channel, not the
+  // window: the provider reads only port2, so a window-posted refusal would
+  // be a dead letter.
   const replies = [];
-  win.__listeners.push((ev) => {
-    if (ev.data?.dir === 'reply') replies.push(ev.data);
-  });
+  channel.port2.onmessage = (ev) => replies.push(ev.data);
 
   win.postMessage(
     { marker: NOSTR_MARKER, dir: 'call', id: 'p1', method: 'generate_key', args: [0], host: 'x' },
@@ -146,9 +147,7 @@ test('US-1698 an oversized payload is dropped loudly, with a typed reply', async
   const win = fakeWindow();
   const { warns, port: port, channel } = wiredRelay(win);
   const replies = [];
-  win.__listeners.push((ev) => {
-    if (ev.data?.dir === 'reply') replies.push(ev.data);
-  });
+  channel.port2.onmessage = (ev) => replies.push(ev.data);
   const big = 'x'.repeat((1 << 20) + 100);
   win.postMessage(
     { marker: NOSTR_MARKER, dir: 'call', id: 'p4', method: 'nip44_encrypt', args: ['cc'.repeat(32), big], host: 'x' },

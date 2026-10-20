@@ -63,33 +63,23 @@
       const { id, method, args = [] } = d;
       if (!isPageMethod(method)) {
         warn(`fapico2 nostr: relayed method "${method}" refused \u2014 not in the page allow-list`);
-        win.postMessage(
-          {
-            marker: NOSTR_MARKER,
-            dir: "reply",
-            id,
-            reply: {
-              error: { name: "ForbiddenMethodError", code: "forbidden-method", message: `${method} is not offered to pages` }
-            }
-          },
-          win.location.origin
-        );
+        channel.port1.postMessage({
+          id,
+          reply: {
+            error: { name: "ForbiddenMethodError", code: "forbidden-method", message: `${method} is not offered to pages` }
+          }
+        });
         return;
       }
       try {
         if (JSON.stringify(d).length > MAX_PAGE_PAYLOAD_CHARS) {
           warn("fapico2 nostr: oversized relay payload dropped");
-          win.postMessage(
-            {
-              marker: NOSTR_MARKER,
-              dir: "reply",
-              id,
-              reply: {
-                error: { name: "PayloadTooLargeError", code: "payload-too-large", message: "the relay refuses oversized payloads" }
-              }
-            },
-            win.location.origin
-          );
+          channel.port1.postMessage({
+            id,
+            reply: {
+              error: { name: "PayloadTooLargeError", code: "payload-too-large", message: "the relay refuses oversized payloads" }
+            }
+          });
           return;
         }
       } catch {

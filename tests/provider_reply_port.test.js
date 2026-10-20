@@ -96,3 +96,43 @@ test('US-1749 with no handshake (no bridge), a forged window reply cannot settle
   ]);
   assert.equal(state, 'pending', 'no port claimed means a window forgery cannot settle the call');
 });
+
+test('US-1749 the honest limit (R-4): a page listener that claimed port2 during the handshake can still forge', async () => {
+  const win = fakeWindow();
+  const channel = new MessageChannel();
+  let pagePort = null;
+  // The page's listener: registered before the handshake dispatches, it
+  // receives the handshake event (a postMessage transfer is a broadcast to
+  // every MAIN-world listener, not a consumption) and grabs port2. This is
+  // the accepted threat model, R-4: the protection is that a PASSIVE page
+  // never receives the port — not that an active page cannot claim it.
+  win.__listeners.push((ev) => {
+    const d = ev.data;
+    if (!d || d.marker !== NOSTR_MARKER) return;
+    if (d.dir === 'handshake' && d.port) {
+      pagePort = d.port;
+    } else if (d.dir === 'call' && pagePort) {
+      setImmediate(() => pagePort.postMessage({ id: d.id, reply: { result: 'forged' } }));
+    }
+  });
+  // The bridge answers init with the handshake and never replies itself —
+  // only the forged port reply arrives.
+  win.__listeners.push((ev) => {
+    const d = ev.data;
+    if (d && d.marker === NOSTR_MARKER && d.dir === 'init') {
+      setImmediate(() =>
+        win.postMessage(
+          { marker: NOSTR_MARKER, dir: 'handshake', port: channel.port2 },
+          win.location.origin,
+          [channel.port2],
+        ),
+      );
+    }
+  });
+  installProvider(win);
+  await new Promise((r) => setTimeout(r, 10));
+  const result = await win.nostr.getPublicKey();
+  assert.equal(result, 'forged', 'an active page that claimed port2 forged the reply — the documented limit');
+  channel.port1.close();
+  channel.port2.close();
+});

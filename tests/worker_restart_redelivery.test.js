@@ -109,6 +109,11 @@ test('US-1751 a restarted worker re-delivers the decision to the reconnecting po
     'the re-delivered reply echoes the BARE frame id — the provider pending map matches it',
   );
   assert.notEqual(delivered[0].id, `${PORT_NAME}/p0`, 'not the dispatch composite');
+  // The outcome is the CONSENT marker, settled at grant time before the device
+  // op: a mid-touch restart settles the page's promise with {consented:true}
+  // instead of stranding it — fail-safe (no leak, no grant, no hang), and the
+  // device never ran. This is the US-1695 record shape, not a device result.
+  assert.deepEqual(delivered[0].result, { consented: true });
 });
 
 test('US-1751 fail closed: a record whose port never reconnects is delivered to no other port', async () => {

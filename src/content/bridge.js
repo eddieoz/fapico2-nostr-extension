@@ -94,35 +94,28 @@ export function createBridgeRelay({ win, connect, warn = console.warn, channel =
     if (d.dir !== 'call') return;
     const { id, method, args = [] } = d;
 
+    // Every reply the bridge produces crosses the port, not the window
+    // (US-1749): the provider reads only port2, so a window-posted refusal is
+    // a dead letter and the page's promise hangs forever.
     if (!isPageMethod(method)) {
       warn(`fapico2 nostr: relayed method "${method}" refused — not in the page allow-list`);
-      win.postMessage(
-        {
-          marker: NOSTR_MARKER,
-          dir: 'reply',
-          id,
-          reply: {
-            error: { name: 'ForbiddenMethodError', code: 'forbidden-method', message: `${method} is not offered to pages` },
-          },
+      channel.port1.postMessage({
+        id,
+        reply: {
+          error: { name: 'ForbiddenMethodError', code: 'forbidden-method', message: `${method} is not offered to pages` },
         },
-        win.location.origin,
-      );
+      });
       return;
     }
     try {
       if (JSON.stringify(d).length > MAX_PAGE_PAYLOAD_CHARS) {
         warn('fapico2 nostr: oversized relay payload dropped');
-        win.postMessage(
-          {
-            marker: NOSTR_MARKER,
-            dir: 'reply',
-            id,
-            reply: {
-              error: { name: 'PayloadTooLargeError', code: 'payload-too-large', message: 'the relay refuses oversized payloads' },
-            },
+        channel.port1.postMessage({
+          id,
+          reply: {
+            error: { name: 'PayloadTooLargeError', code: 'payload-too-large', message: 'the relay refuses oversized payloads' },
           },
-          win.location.origin,
-        );
+        });
         return;
       }
     } catch {
