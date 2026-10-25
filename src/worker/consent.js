@@ -94,13 +94,29 @@ export function createConsentGate({
       throw e;
     }
 
-    if (decision.remember) {
-      await permissions.grant(host, [method]);
-    } else {
-      permissions.grantSession(host, [method]);
+    try {
+      if (decision.remember) {
+        await permissions.grant(host, [method]);
+      } else {
+        permissions.grantSession(host, [method]);
+      }
+      const outcome = { result: { consented: true } };
+      if (pending && requestId != null) await pending.settle(requestId, outcome);
+    } catch (err) {
+      // The consent line releases at settle() — recording the decision must
+      // not strand it. After decide(approve) the prompt record lives in
+      // awaitingSettle and nothing else settles it (a post-approval window
+      // close is a deliberate no-op, US-1722), so a storage failure here
+      // used to hold the line forever. Settle the record 'err' — the window
+      // shows why, the line moves on — and the request still fails below
+      // (review R-2).
+      try {
+        await prompt.settle(requestId, 'err', err?.message ?? 'the decision could not be recorded');
+      } catch {
+        /* the record may already be gone; the rethrow below still fails the request */
+      }
+      throw err;
     }
-    const outcome = { result: { consented: true } };
-    if (pending && requestId != null) await pending.settle(requestId, outcome);
     // US-1725 — the device hasn't been touched yet: hand the handler a hook so
     // it can report the device outcome (US-1723's settle) exactly once after
     // the touch. A persisted grant never opened a window, so it gets no hook

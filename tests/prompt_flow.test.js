@@ -254,6 +254,70 @@ test('US-1725 concurrent asks serialize — one prompt window at a time, release
   assert.equal(windows.created.length, 3, 'an error settle releases the line too (its window stays, the line moves on)');
 });
 
+test('US-1725 a failed window create never wedges the consent line (review R-1)', async () => {
+  // windows.create can reject (window-count limits, the worker-unload race).
+  // The ask fails typed — and the line MUST release, or every future prompt
+  // from every site hangs with no window, permanently. The resolver is a
+  // no-op after its first call, so an unconditional release is safe.
+  const windows = fakeWindows();
+  const baseCreate = windows.create.bind(windows);
+  let failOnce = true;
+  windows.create = async (opts) => {
+    if (failOnce) {
+      failOnce = false;
+      throw new Error('window limit reached');
+    }
+    return baseCreate(opts);
+  };
+  const prompt = createPromptFlow({ windows, beatMs: 0, deliver: () => {} });
+
+  await assert.rejects(
+    () => prompt.ask({ requestId: 'w1', method: 'sign_event', host: 'h.example', preview: 'x' }),
+    /window limit/,
+    'the failed ask rejects',
+  );
+
+  const d2 = prompt.ask({ requestId: 'w2', method: 'sign_event', host: 'h.example', preview: 'x' });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(windows.created.length, 1, 'the next ask opened its window — the line was released, not held');
+  await prompt.decide({ requestId: 'w2', approve: false });
+  await assert.rejects(() => d2, (e) => e.code === 'user-denied');
+});
+
+test('US-1725 a failed decision write never wedges the consent line (review R-2)', async () => {
+  // Between decide(approve) and the handler's notifySettle, the consent gate
+  // persists the grant and the pending record — both can reject (storage
+  // quota). The request must fail typed AND the line must move: nothing else
+  // would settle the awaitingSettle record, so a throw there used to hold
+  // the line forever with no recovery path in-process.
+  const windows = fakeWindows();
+  const prompt = createPromptFlow({ windows, beatMs: 0, deliver: () => {} });
+  const storage = fakeStorage();
+  const rawSet = storage.set.bind(storage);
+  let failOnce = true;
+  storage.set = async (obj) => {
+    if (failOnce && obj && Object.hasOwn(obj, 'grants')) {
+      failOnce = false;
+      throw new Error('storage quota exceeded');
+    }
+    return rawSet(obj);
+  };
+  const permissions = createPermissionStore({ storage });
+  const consent = createConsentGate({ permissions, prompt, hostOf: () => 'h.example' });
+  const sender = { url: 'https://h.example/post' };
+
+  const g1 = consent({ method: 'sign_event', args: [{ kind: 1 }], sender, requestId: 'g1' });
+  await new Promise((r) => setImmediate(r));
+  await prompt.decide({ requestId: 'g1', approve: true, remember: true });
+  await assert.rejects(() => g1, /storage quota/, 'the request fails typed, not hung');
+
+  const g2 = consent({ method: 'sign_event', args: [{ kind: 1 }], sender, requestId: 'g2' });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(windows.created.length, 2, "the next request's window opened — the line was not held");
+  await prompt.decide({ requestId: 'g2', approve: false });
+  await assert.rejects(() => g2, (e) => e.code === 'user-denied');
+});
+
 test('US-1723 settle for an unknown requestId is inert — no throw, no push, no resurrection', async () => {
   const windows = fakeWindows();
   const delivered = [];

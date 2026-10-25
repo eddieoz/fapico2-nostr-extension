@@ -127,10 +127,8 @@ export function createPromptFlow({
       const prev = consentLine;
       let lineDone;
       consentLine = new Promise((r) => (lineDone = r));
-      let entered = false;
       try {
         await prev; // the line is never rejected; it is only released
-        entered = true;
         const url =
           `prompt.html?request=${encodeURIComponent(requestId)}` +
           `&method=${encodeURIComponent(method)}` +
@@ -147,7 +145,12 @@ export function createPromptFlow({
           outstanding.set(requestId, { resolve, reject, windowId: win.id, lineDone });
         });
       } catch (err) {
-        if (!entered) lineDone(); // never hold the line for a failure to enter it
+        // A failure to open (or register) this request's own window must
+        // never hold the consent line — every future prompt from every site
+        // would hang with no window and no recovery path in-process. The
+        // resolver is a no-op after its first call, so releasing here is
+        // always safe (review R-1).
+        lineDone();
         throw err;
       }
     },
