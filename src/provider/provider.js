@@ -18,6 +18,7 @@
 
 import { serializeBridgeError, reviveBridgeError } from '../core/window_nostr.js';
 import { NOSTR_MARKER } from '../shared/protocol.js';
+import { base64 } from '@scure/base';
 
 const utf8 = new TextEncoder();
 const decoder = new TextDecoder();
@@ -93,7 +94,16 @@ export function installProvider(win) {
     nip44: {
       // NIP-44's plaintext is utf8 text; it crosses as hex so the frame
       // stays JSON-serializable. The worker does the device framing.
-      encrypt: (peer, plaintext) => call('nip44_encrypt', peer, utf8ToHex(String(plaintext))),
+      encrypt: (peer, plaintext) =>
+        call('nip44_encrypt', peer, utf8ToHex(String(plaintext))).then((bytes) =>
+          // NIP-07's nip44 contract (and the NIP-44 v2 wire format): the page
+          // receives the payload base64-encoded. The worker returns the raw
+          // device bytes spread for JSON; sites set this return value directly
+          // as an event's content, so a non-string breaks nostr-tools'
+          // validateEvent at sign time ("can't serialize event with wrong or
+          // missing properties" — chat.nostr.com/Anagram was exactly that).
+          base64.encode(Uint8Array.from(bytes)),
+        ),
       // US-1747 — the worker returns the plaintext as a byte-array (the
       // device's raw answer, spread for JSON); decode it to utf8 here. The
       // old hexToUtf8 expected a hex string and mangled the byte-array.

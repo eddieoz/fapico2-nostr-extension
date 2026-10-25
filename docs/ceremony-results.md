@@ -37,6 +37,20 @@ matches — which no prior ceremony ever exercised end to end (the old framing
 made it impossible). A normal site sign through the new reply port closes the
 US-1749 side.
 
+**Addition (2026-10-25, main):** a live-site compatibility finding rides on
+the same re-run. The provider resolved `nip44.encrypt` with the raw device
+byte array instead of the NIP-44 v2 base64 string, so chat.nostr.com
+(Anagram) embedded a non-string as an event `content` and every seal/contact-list
+publish failed at site-side `validateEvent` ("can't serialize event with
+wrong or missing properties") — fixed in the provider (page-visible encoding
+only; wire bytes and touch flow unchanged). The owed ceremony should include
+one real-site NIP-44 encrypt+send (chat.nostr.com or ditto.pub) to close the
+shape question on hardware. Note also: NIP-42 relay AUTH (e.g.
+wot.nostr.sats4.life/inbox) signs a kind-22242 through the consent path —
+every relay challenge is a prompt + touch, and the site's 15 s auth guard
+races the device's touch window; swallowed auth failures there are expected
+site behavior, not a typed-error regression.
+
 ## PASSED — 2026-10-15, US-1706/US-1707 PIN custody: the full flow on hardware (feat/nostr-pin)
 
 **Board:** fapico2, operator eddieoz — every custody decision on the real

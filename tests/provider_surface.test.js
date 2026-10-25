@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 
 import { installProvider } from '../src/provider/provider.js';
 import { NOSTR_MARKER } from '../src/shared/protocol.js';
+import { base64 } from '@scure/base';
 
 // A same-frame fake of the window both worlds share (the ported
 // window_nostr.test.js pattern).
@@ -124,7 +125,9 @@ test('US-1697 nip44.encrypt passes utf8 hex; nip44.decrypt returns the plaintext
       assert.equal(d.args[0], 'bb'.repeat(32));
       // 'hello' in hex.
       assert.equal(d.args[1], '68656c6c6f');
-      return { result: 'cafe'.repeat(4) };
+      // The real worker's reply: the device payload bytes, spread for JSON
+      // (handlers.js nip44_encrypt) — never a pre-encoded string.
+      return { result: [0xca, 0xfe, 0xca, 0xfe] };
     }
     if (d.method === 'nip44_decrypt') {
       assert.equal(d.args[1], 'aabbccdd');
@@ -137,7 +140,12 @@ test('US-1697 nip44.encrypt passes utf8 hex; nip44.decrypt returns the plaintext
   installProvider(win);
   await handshake();
   const payload = await win.nostr.nip44.encrypt('bb'.repeat(32), 'hello');
-  assert.equal(payload, 'cafecafecafecafe', 'the raw payload crosses as the device produced it');
+  // NIP-44 v2 wire format: the page receives the payload base64-encoded.
+  // A site (chat.nostr.com/Anagram) sets this directly as an event's content;
+  // a non-string (the raw byte array) fails nostr-tools validateEvent with
+  // "can't serialize event with wrong or missing properties" at sign time.
+  assert.equal(typeof payload, 'string', 'nip44.encrypt must resolve a string');
+  assert.equal(payload, base64.encode(Uint8Array.from([0xca, 0xfe, 0xca, 0xfe])));
   const pt = await win.nostr.nip44.decrypt('cc'.repeat(32), 'aabbccdd');
   assert.equal(pt, 'fine');
   closeChannel(channel);
