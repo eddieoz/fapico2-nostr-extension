@@ -218,6 +218,42 @@ test('US-1723-err settle(err) leaves the window open — the sentence is the dia
   assert.equal(windows.removedCount, before, 'no scheduled close for an error — the sentence stays readable');
 });
 
+test('US-1725 concurrent asks serialize — one prompt window at a time, released at settle', async () => {
+  // The reinstall field report: a fresh install has no grants, the site
+  // fires get_public_key + nip44 + auth signs at once, and every ungranted
+  // call opened its OWN window — a popup storm where each approved window
+  // then queued behind the others for the single device. The consent line:
+  // exactly one window at a time; the next opens only after the previous
+  // request's device op settles (or its ask rejects — deny/close). Consent
+  // is never weakened: every request still gets its own window and decision.
+  const windows = fakeWindows();
+  const prompt = createPromptFlow({ windows, beatMs: 0, deliver: () => {} });
+  const d1 = prompt.ask({ requestId: 's1', method: 'get_public_key', host: 'h.example', preview: 'x' });
+  const d2 = prompt.ask({ requestId: 's2', method: 'nip44_encrypt', host: 'h.example', preview: 'x' });
+  const d3 = prompt.ask({ requestId: 's3', method: 'sign_event', host: 'h.example', preview: 'x' });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(windows.created.length, 1, 'only the FIRST request opens a window');
+
+  await prompt.decide({ requestId: 's1', approve: true });
+  await d1; // the decision resolved — but the device op has not settled yet
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(windows.created.length, 1, 'the second window waits for the first device op');
+
+  await prompt.settle('s1', 'ok');
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(windows.created.length, 2, 'after the settle, the next window opens');
+
+  await prompt.decide({ requestId: 's2', approve: false }); // a deny settles the line immediately
+  await assert.rejects(() => d2, (e) => e.code === 'user-denied');
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(windows.created.length, 3, 'a denial releases the line for the next request');
+
+  await prompt.decide({ requestId: 's3', approve: true });
+  await prompt.settle('s3', 'err', 'touch timed out — the device asked for a touch and none came');
+  await d3;
+  assert.equal(windows.created.length, 3, 'an error settle releases the line too (its window stays, the line moves on)');
+});
+
 test('US-1723 settle for an unknown requestId is inert — no throw, no push, no resurrection', async () => {
   const windows = fakeWindows();
   const delivered = [];

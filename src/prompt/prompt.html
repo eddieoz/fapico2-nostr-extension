@@ -16,6 +16,11 @@
   </div>
   <div class="request-identity" id="identity" hidden></div>
 
+  <!-- The custody-board advisory: shown at open when GET_INFO says the board
+       is PIN-locked — unlock first, then approve (the device refuses gated
+       ops pre-touch while locked). -->
+  <div class="pin-advisory" id="pin-advisory" role="status" hidden></div>
+
   <p class="hint" id="hint"></p>
 
   <label class="check">

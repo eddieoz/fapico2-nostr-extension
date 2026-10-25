@@ -88,6 +88,10 @@ test('US-1735 a route without a port (direct invocation, the test-runner shape) 
 // id on two bridge ports. Today the second ask() overwrites the first record
 // — approving A resolves B and A hangs. The composite keeps both requests
 // distinct end to end.
+// US-1725 note: the consent line serializes prompt WINDOWS — one at a time,
+// each released when its request's device op settles. The two requests still
+// coexist; their windows just open in order. This test drives the line the
+// way pageMethod does (approve → settle → next window).
 test('US-1735 two concurrent prompts with the same frame id stay distinct — approving A never resolves B', async () => {
   const windows = fakeWindows();
   const prompt = createPromptFlow({ windows });
@@ -108,18 +112,16 @@ test('US-1735 two concurrent prompts with the same frame id stay distinct — ap
   const frame = { id: 'p0', method: 'sign_event', args: [{ kind: 1 }] };
   const gateA = dispatch(frame, tabSender('a.example'), fakePort('nostr-tab-a'));
   const gateB = dispatch({ ...frame }, tabSender('b.example'), fakePort('nostr-tab-b'));
-  await new Promise((r) => setImmediate(r)); // let both ask()s register
+  await new Promise((r) => setImmediate(r)); // let both asks enter the consent line
 
-  assert.equal(windows.created.length, 2, 'two distinct prompt windows are open');
+  // US-1725 — one window at a time: A's window is open, B is held on the line.
+  assert.equal(windows.created.length, 1, 'only the first request has a window (the consent line)');
 
   // The prompt page derives its requestId from the window URL — round-trip
-  // it. Creation order is nondeterministic under concurrent dispatches, so
-  // each window is identified by ITS OWN url, never by creation index.
+  // it. Each window is identified by ITS OWN url, never by creation index.
   const reqOf = (win) => new URL(win.opts.url, 'https://ext/').searchParams.get('request');
   const requestIdA = windows.created.map(reqOf).find((rq) => rq.startsWith('nostr-tab-a/'));
-  const requestIdB = windows.created.map(reqOf).find((rq) => rq.startsWith('nostr-tab-b/'));
   assert.equal(requestIdA, 'nostr-tab-a/p0', 'the composite survives the URL encoding');
-  assert.equal(requestIdB, 'nostr-tab-b/p0');
 
   await prompt.decide({ requestId: requestIdA, approve: true, remember: false });
   // A's decision granted A's consent — the dispatch reply carries the result.
@@ -127,10 +129,19 @@ test('US-1735 two concurrent prompts with the same frame id stay distinct — ap
   assert.equal(replyA.id, 'p0', 'A’s reply echoes the bare frame id');
   assert.equal(replyA.result?.host, 'a.example', 'A’s consent resolved, not B’s');
 
-  // B is still waiting on its own window — no reply from A's approval.
+  // B is still waiting — no reply from A's approval, and no window yet: the
+  // line holds B until A's device op settles (the pageMethod contract).
   const bOutcome = gateB.then(() => 'replied', () => 'replied');
   const winner = await Promise.race([bOutcome, new Promise((r) => setTimeout(() => r('pending'), 20))]);
   assert.equal(winner, 'pending', "B's consent is still outstanding after A's approval");
+  assert.equal(windows.created.length, 1, "B's window has not opened — the line is A's until settle");
+
+  // A settles (the handler's notifySettle): the line releases, B's window opens.
+  await prompt.settle(requestIdA, 'ok');
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(windows.created.length, 2, "B's window opens after A's settle");
+  const requestIdB = windows.created.map(reqOf).find((rq) => rq.startsWith('nostr-tab-b/'));
+  assert.equal(requestIdB, 'nostr-tab-b/p0');
 
   // B's own window close denies B typed — the close-before-approve invariant.
   // At the dispatch level a typed denial is a RESOLVED {id, error} reply (the

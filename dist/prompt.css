@@ -120,6 +120,23 @@ button.deny { color: var(--err); border-color: var(--err); background: transpare
    actions row never jumps when the line lands (US-1719) */
 .request-identity[hidden] { display: block; }
 
+/* the custody-board advisory (PIN-locked): amber reserved for the device's
+   touch state, so this reads as a warning note on the raised chassis — one
+   step louder than the identity line, one quieter than the error outcome.
+   Hidden by default; when shown it is in flow (no layout jump matters here —
+   it appears before any decision). */
+.pin-advisory {
+  font: 12px/1.5 var(--mono);
+  color: var(--ink);
+  margin-top: 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--amber-dim);
+  border-left: 3px solid var(--amber-dim);
+  border-radius: 4px;
+  background: var(--bg-inset);
+}
+.pin-advisory[hidden] { display: none; }
+
 /* US-1724 — the touch state: the same amber touch bar as the popup (shared
    tokens + the shared pulse primitive), fuller language for the prompt's room.
    Hidden until Approve, then pulsing until the device op settles. */

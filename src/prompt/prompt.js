@@ -9,7 +9,8 @@ import { createPortClient } from '../shared/port-client.js';
 import { identityLine } from './identity.js';
 import { requestRender } from './request-render.js';
 import { rememberCopy } from './remember-copy.js';
-import { TOUCH_TEXT, LOST_CONNECTION_TEXT, settleBeat } from './touch-state.js';
+import { TOUCH_TEXT, LOST_CONNECTION_TEXT, PIN_LOCKED_ADVISORY, settleBeat } from './touch-state.js';
+import { parsePinState } from '../worker/pin_flow.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -61,6 +62,26 @@ if (method !== 'list_keys') {
         $('identity').hidden = false;
       }
     } catch { /* graded: omit — the line is advisory, never an error */ }
+  })();
+}
+
+// The custody-board advisory: sign/nip44 are refused with 0x6982 while the
+// board is PIN-locked — pre-touch, so the device never arms. Read the PIN
+// state at open (GET_INFO via device_status, touch-free) and, when a PIN is
+// set and the session is locked, tell the user to unlock FIRST — approving
+// now cannot run. Graded and silent when the state cannot be read: the
+// post-approve typed sentence (persistent since US-1723-err) still catches it.
+const PIN_GATED_METHODS = new Set(['sign_event', 'nip44_encrypt', 'nip44_decrypt']);
+if (PIN_GATED_METHODS.has(method)) {
+  (async () => {
+    try {
+      const status = await withTimeout(api.call('device_status'), 1500);
+      const pin = status?.state === 'connected' ? parsePinState(status.info) : null;
+      if (pin?.ui === 'locked') {
+        $('pin-advisory').textContent = PIN_LOCKED_ADVISORY;
+        $('pin-advisory').hidden = false;
+      }
+    } catch { /* graded: the settle sentence carries the 0x6982 words */ }
   })();
 }
 

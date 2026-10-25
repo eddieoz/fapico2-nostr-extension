@@ -6,6 +6,16 @@
 export const TOUCH_TEXT = 'touch your fapico2 board';
 
 /**
+ * The pre-approval advisory for a PIN-locked board (the chat.nostr.com field
+ * run). The custody board refuses sign/nip44 ops with 0x6982 while locked —
+ * pre-touch, so the device never arms and the user waits at an amber bar for
+ * nothing. Shown at prompt open for the gated methods when GET_INFO says a
+ * PIN is set and the session is not unlocked: unlock FIRST, then approve.
+ */
+export const PIN_LOCKED_ADVISORY =
+  'this board is locked with a PIN — open the fapico2 popup and verify it before approving; the operation will not run while it is locked.';
+
+/**
  * The worker-restart case the flow cannot settle: the port dies before a
  * prompt-settled frame lands, so the page shows this and leaves the window
  * open for the user to check the site.

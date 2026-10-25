@@ -495,6 +495,7 @@
 
   // src/prompt/touch-state.js
   var TOUCH_TEXT = "touch your fapico2 board";
+  var PIN_LOCKED_ADVISORY = "this board is locked with a PIN \u2014 open the fapico2 popup and verify it before approving; the operation will not run while it is locked.";
   var LOST_CONNECTION_TEXT = "connection to the extension was lost \u2014 check the site";
   function successBeat(method2) {
     switch (String(method2 ?? "").toLowerCase()) {
@@ -517,6 +518,21 @@
       return { text: String(message ?? ""), err: true };
     }
     return { text: successBeat(method2), err: false };
+  }
+
+  // src/worker/pin_flow.js
+  var CAP_PIN_MGMT = 4;
+  var FLAG_PIN_SET = 1;
+  var FLAG_SESSION_UNLOCKED = 2;
+  function parsePinState(info) {
+    const caps = info?.caps ?? 0;
+    const flags = info?.flags ?? 0;
+    const supported = (caps & CAP_PIN_MGMT) !== 0;
+    const pinSet = (flags & FLAG_PIN_SET) !== 0;
+    const unlocked = (flags & FLAG_SESSION_UNLOCKED) !== 0;
+    if (!supported) return { supported, pinSet, unlocked, ui: "unsupported" };
+    if (!pinSet) return { supported, pinSet, unlocked, ui: "offer" };
+    return { supported, pinSet, unlocked, ui: unlocked ? "ready" : "locked" };
   }
 
   // src/prompt/prompt.js
@@ -547,6 +563,20 @@
         if (line) {
           $("identity").textContent = line;
           $("identity").hidden = false;
+        }
+      } catch {
+      }
+    })();
+  }
+  var PIN_GATED_METHODS = /* @__PURE__ */ new Set(["sign_event", "nip44_encrypt", "nip44_decrypt"]);
+  if (PIN_GATED_METHODS.has(method)) {
+    (async () => {
+      try {
+        const status = await withTimeout(api.call("device_status"), 1500);
+        const pin = status?.state === "connected" ? parsePinState(status.info) : null;
+        if (pin?.ui === "locked") {
+          $("pin-advisory").textContent = PIN_LOCKED_ADVISORY;
+          $("pin-advisory").hidden = false;
         }
       } catch {
       }

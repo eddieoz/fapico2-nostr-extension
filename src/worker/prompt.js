@@ -93,8 +93,18 @@ export function createPromptFlow({
   // closes.
   beatMs = 800,
 } = {}) {
-  const outstanding = new Map(); // requestId -> {resolve, reject, windowId}
-  const awaitingSettle = new Map(); // requestId -> {windowId}
+  const outstanding = new Map(); // requestId -> {resolve, reject, windowId, lineDone}
+  const awaitingSettle = new Map(); // requestId -> {windowId, lineDone}
+
+  // US-1725 — the consent line: exactly one prompt window at a time. A fresh
+  // install has no grants and a site fires several ungranted calls at once;
+  // every one of them used to open its OWN window — a popup storm where each
+  // approved op then queued behind the others for the single device (the
+  // chat.nostr.com reinstall field report). The line releases when a request
+  // is fully done: its device op settled (ok or err), or its ask rejected
+  // (deny / window closed). Consent is never weakened — every request still
+  // gets its own window and its own decision, in order.
+  let consentLine = Promise.resolve();
 
   if (windows?.onRemoved?.addListener) {
     windows.onRemoved.addListener((windowId) => {
@@ -104,29 +114,42 @@ export function createPromptFlow({
         // Closing the window BEFORE approval is an explicit reject — never a
         // hang. A window closed AFTER approval lives in awaitingSettle, so it
         // is not touched here (US-1722 — post-approval close is a no-op).
+        rec.lineDone?.();
         rec.reject({ ...USER_DENIED, message: 'the approval window was closed — request denied' });
       }
     });
   }
 
   return {
-    /** Open the prompt; resolves `{approved, remember}` or rejects typed. */
+    /** Open the prompt; resolves `{approved, remember}` or rejects typed.
+     *  Waits for the previous request's line slot — one window at a time. */
     async ask({ requestId, method, host, preview, focus = true }) {
-      const url =
-        `prompt.html?request=${encodeURIComponent(requestId)}` +
-        `&method=${encodeURIComponent(method)}` +
-        `&host=${encodeURIComponent(host)}` +
-        `&preview=${encodeURIComponent(preview)}`;
-      const win = await windows.create({
-        url,
-        type: 'popup',
-        width: 420,
-        height: 320,
-        focused: focus,
-      });
-      return new Promise((resolve, reject) => {
-        outstanding.set(requestId, { resolve, reject, windowId: win.id });
-      });
+      const prev = consentLine;
+      let lineDone;
+      consentLine = new Promise((r) => (lineDone = r));
+      let entered = false;
+      try {
+        await prev; // the line is never rejected; it is only released
+        entered = true;
+        const url =
+          `prompt.html?request=${encodeURIComponent(requestId)}` +
+          `&method=${encodeURIComponent(method)}` +
+          `&host=${encodeURIComponent(host)}` +
+          `&preview=${encodeURIComponent(preview)}`;
+        const win = await windows.create({
+          url,
+          type: 'popup',
+          width: 420,
+          height: 320,
+          focused: focus,
+        });
+        return new Promise((resolve, reject) => {
+          outstanding.set(requestId, { resolve, reject, windowId: win.id, lineDone });
+        });
+      } catch (err) {
+        if (!entered) lineDone(); // never hold the line for a failure to enter it
+        throw err;
+      }
     },
 
     /** The prompt page's decision (via the dispatch, trusted sender). */
@@ -137,10 +160,12 @@ export function createPromptFlow({
       if (approve) {
         // US-1722 — resolve exactly once (handler path unchanged), but keep the
         // record in awaitingSettle with its windowId so a post-approval close is
-        // a no-op and US-1723 can settle it.
-        awaitingSettle.set(requestId, { windowId: rec.windowId });
+        // a no-op and US-1723 can settle it. The line is NOT released here: the
+        // next window opens only after this request's device op settles.
+        awaitingSettle.set(requestId, { windowId: rec.windowId, lineDone: rec.lineDone });
         rec.resolve({ approved: true, remember, at: now() });
       } else {
+        rec.lineDone?.(); // a denial is final — the line moves on now
         rec.reject({ ...USER_DENIED });
       }
       return { delivered: true };
@@ -169,6 +194,9 @@ export function createPromptFlow({
         // rides along for 'err'; 'ok' carries none.
         ...(message != null ? { message } : {}),
       });
+      // The request is fully done — the line moves on (the error WINDOW may
+      // stay open for its sentence; the line is not the window).
+      rec.lineDone?.();
       // A visible beat so the user sees the outcome before the window closes.
       // windows.remove on an already-closed window is swallowed (US-1722).
       if (outcome !== 'err') {

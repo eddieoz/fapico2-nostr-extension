@@ -32,6 +32,9 @@ function fakeWindows() {
   return {
     createdCount: 0,
     create: async () => ({ id: nextId++ }),
+    // US-1723/US-1725 — settle(ok) closes the window through remove(); the
+    // stub records nothing (created count is bump-driven), it just exists.
+    remove: async () => {},
     onRemoved: { addListener: (fn) => removedListeners.push(fn) },
     get created() {
       return this.createdCount;
@@ -58,6 +61,10 @@ async function answerPrompt(prompt, requestId, { approve, remember }) {
   // after ask()'s async body has registered the request.
   await new Promise((r) => setImmediate(r));
   await prompt.decide({ requestId, approve, remember });
+  // US-1725 — the consent line releases at the request's settle, the way
+  // pageMethod's notifySettle always does after the device op; the simulated
+  // op completes with the decision. A denial released the line already.
+  if (approve) await prompt.settle(requestId, 'ok');
 }
 
 test('US-1701 remember → persisted → the second call skips the prompt (device still called)', async () => {

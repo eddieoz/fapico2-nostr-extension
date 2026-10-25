@@ -8167,29 +8167,43 @@
   } = {}) {
     const outstanding = /* @__PURE__ */ new Map();
     const awaitingSettle = /* @__PURE__ */ new Map();
+    let consentLine = Promise.resolve();
     if (windows?.onRemoved?.addListener) {
       windows.onRemoved.addListener((windowId) => {
         for (const [id, rec] of [...outstanding.entries()]) {
           if (rec.windowId !== windowId) continue;
           outstanding.delete(id);
+          rec.lineDone?.();
           rec.reject({ ...USER_DENIED, message: "the approval window was closed \u2014 request denied" });
         }
       });
     }
     return {
-      /** Open the prompt; resolves `{approved, remember}` or rejects typed. */
+      /** Open the prompt; resolves `{approved, remember}` or rejects typed.
+       *  Waits for the previous request's line slot — one window at a time. */
       async ask({ requestId, method, host, preview, focus = true }) {
-        const url = `prompt.html?request=${encodeURIComponent(requestId)}&method=${encodeURIComponent(method)}&host=${encodeURIComponent(host)}&preview=${encodeURIComponent(preview)}`;
-        const win = await windows.create({
-          url,
-          type: "popup",
-          width: 420,
-          height: 320,
-          focused: focus
-        });
-        return new Promise((resolve, reject) => {
-          outstanding.set(requestId, { resolve, reject, windowId: win.id });
-        });
+        const prev = consentLine;
+        let lineDone;
+        consentLine = new Promise((r) => lineDone = r);
+        let entered = false;
+        try {
+          await prev;
+          entered = true;
+          const url = `prompt.html?request=${encodeURIComponent(requestId)}&method=${encodeURIComponent(method)}&host=${encodeURIComponent(host)}&preview=${encodeURIComponent(preview)}`;
+          const win = await windows.create({
+            url,
+            type: "popup",
+            width: 420,
+            height: 320,
+            focused: focus
+          });
+          return new Promise((resolve, reject) => {
+            outstanding.set(requestId, { resolve, reject, windowId: win.id, lineDone });
+          });
+        } catch (err) {
+          if (!entered) lineDone();
+          throw err;
+        }
       },
       /** The prompt page's decision (via the dispatch, trusted sender). */
       async decide({ requestId, approve, remember = false }) {
@@ -8197,9 +8211,10 @@
         if (!rec) return { delivered: false };
         outstanding.delete(requestId);
         if (approve) {
-          awaitingSettle.set(requestId, { windowId: rec.windowId });
+          awaitingSettle.set(requestId, { windowId: rec.windowId, lineDone: rec.lineDone });
           rec.resolve({ approved: true, remember, at: now2() });
         } else {
+          rec.lineDone?.();
           rec.reject({ ...USER_DENIED });
         }
         return { delivered: true };
@@ -8227,6 +8242,7 @@
           // rides along for 'err'; 'ok' carries none.
           ...message != null ? { message } : {}
         });
+        rec.lineDone?.();
         if (outcome !== "err") {
           setTimeout(() => {
             windows.remove(rec.windowId).catch(() => {

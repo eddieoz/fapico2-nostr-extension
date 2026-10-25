@@ -197,6 +197,38 @@ test('US-1724 prompt.html carries the touch-bar and outcome hooks', async () => 
   assert.ok(/touch your fapico2 board/.test(html), 'the touch bar language matches the popup');
 });
 
+// The chat.nostr.com field run: a PIN-locked custody board refuses sign and
+// nip44 ops with 0x6982 PRE-TOUCH — the device never arms, and the only
+// guidance was the post-failure sentence (which older builds flashed for one
+// beat). The prompt now advises at open, for every gated method alike: the
+// sign prompt told the operator to unlock; the encrypt prompt did not — one
+// advisory covers both.
+test('the PIN-locked advisory: copy, hook, styling, and the gated-method pre-flight', async () => {
+  const { PIN_LOCKED_ADVISORY } = await import('../src/prompt/touch-state.js');
+  assert.ok(PIN_LOCKED_ADVISORY.length > 20, 'the advisory copy exists');
+  assert.match(PIN_LOCKED_ADVISORY, /verify/i, 'it tells the user to verify the PIN');
+  assert.match(PIN_LOCKED_ADVISORY, /before approving/i, 'it says unlock FIRST, not after the failure');
+
+  const js = await read('src/prompt/prompt.js');
+  assert.ok(/PIN_LOCKED_ADVISORY/.test(js), 'the page renders the advisory copy');
+  assert.ok(/device_status/.test(js), 'it reads the PIN state through the trusted status probe');
+  assert.ok(/parsePinState/.test(js), 'it derives the locked surface, not a raw flag guess');
+  for (const m of ['sign_event', 'nip44_encrypt', 'nip44_decrypt']) {
+    assert.ok(js.includes(`'${m}'`), `the advisory covers ${m}`);
+  }
+  assert.ok(!/get_public_key/.test(js.match(/PIN_GATED_METHODS[^;]+;/)?.[0] ?? ''),
+    'the touch-free pubkey read is not gated and never warns');
+
+  const html = await read('src/prompt/prompt.html');
+  assert.ok(/id="pin-advisory"/.test(html), 'the advisory hook exists');
+  assert.ok(html.includes('role="status"'), 'the advisory is a status region');
+
+  const css = stripComments(await read('src/prompt/prompt.css'));
+  assert.ok(/\.pin-advisory\s*\{/.test(css), 'the advisory is styled');
+  const blockCss = css.match(/\.pin-advisory\s*\{[^}]*\}/)?.[0] ?? '';
+  assert.ok(blockCss.includes('var(--amber-dim)'), 'it leans on the shared amber-dim token, not a new color');
+});
+
 // US-1724 — the touch bar (amber, pulsing) and outcome beat are styled; the
 // pulse is the shared primitive, not redefined per page.
 test('US-1724 prompt.css styles the touch bar and outcome beat', async () => {
