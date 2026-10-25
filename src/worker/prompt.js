@@ -148,10 +148,14 @@ export function createPromptFlow({
 
     /**
      * US-1723 — the device op settled (`outcome` is 'ok' or 'err'). Push the
-     * outcome to the request's window port and, after a visible beat, close it.
-     * A settle for an unknown requestId (a worker restart ate the map) is inert
-     * — no throw, no store write, no resurrection of state: awaitingSettle is
-     * in-memory only, so the session-record shape gains no field.
+     * outcome to the request's window port and, after a visible beat, close it
+     * — but only on success. An error keeps the window open with its typed
+     * sentence: the chat.nostr.com field run showed an 800 ms flash is not
+     * readable, and the sentence IS the diagnosis (which word the board
+     * answered). The user closes an error window themselves. A settle for an
+     * unknown requestId (a worker restart ate the map) is inert — no throw,
+     * no store write, no resurrection of state: awaitingSettle is in-memory
+     * only, so the session-record shape gains no field.
      */
     async settle(requestId, outcome, message) {
       const rec = awaitingSettle.get(requestId);
@@ -167,9 +171,11 @@ export function createPromptFlow({
       });
       // A visible beat so the user sees the outcome before the window closes.
       // windows.remove on an already-closed window is swallowed (US-1722).
-      setTimeout(() => {
-        windows.remove(rec.windowId).catch(() => {});
-      }, beatMs);
+      if (outcome !== 'err') {
+        setTimeout(() => {
+          windows.remove(rec.windowId).catch(() => {});
+        }, beatMs);
+      }
       return { delivered: true };
     },
 

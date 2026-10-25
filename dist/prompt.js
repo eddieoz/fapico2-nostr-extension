@@ -582,8 +582,11 @@
   }
   api.onEvent((frame) => {
     if (frame.event !== "prompt-settled") return;
-    showOutcome(settleBeat(method, frame));
-    setTimeout(() => window.close(), 800);
+    const beat = settleBeat(method, frame);
+    showOutcome(beat);
+    if (!beat.err) {
+      setTimeout(() => window.close(), 800);
+    }
   });
   api.onDisconnect(() => {
     if (done) return;

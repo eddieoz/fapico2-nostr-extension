@@ -102,13 +102,19 @@ function showTouch() {
   $('actions').hidden = true;
 }
 
-// US-1723 — the worker pushes the outcome frame to this request's port.
+// US-1723 — the worker pushes the outcome frame to this request's port. A
+// success beat closes the window; an ERROR keeps it open — the typed sentence
+// (which word the board answered) is the diagnosis, and an 800 ms flash hid
+// it in the chat.nostr.com field run. The user closes an error window.
 api.onEvent((frame) => {
   if (frame.event !== 'prompt-settled') return;
-  showOutcome(settleBeat(method, frame));
-  // The worker closes the window after a beat (US-1723); this is the page's own
-  // guarantee that the beat stays visible even if that remove never lands.
-  setTimeout(() => window.close(), 800);
+  const beat = settleBeat(method, frame);
+  showOutcome(beat);
+  if (!beat.err) {
+    // The worker closes the window after its beat; this is the page's own
+    // guarantee that the beat stays visible even if that remove never lands.
+    setTimeout(() => window.close(), 800);
+  }
 });
 
 api.onDisconnect(() => {

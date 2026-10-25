@@ -200,6 +200,24 @@ test('US-1723 settle(err, message) pushes the typed error sentence', async () =>
   assert.deepEqual(delivered[0], { event: 'prompt-settled', requestId: 'r2', outcome: 'err', message: 'the touch timed out' });
 });
 
+test('US-1723-err settle(err) leaves the window open — the sentence is the diagnosis', async () => {
+  // The chat.nostr.com field report: an encrypt approved, the board never
+  // armed, and the typed refusal flashed for one beat before the window
+  // closed — the operator never saw WHICH sentence the device answered.
+  // A failure keeps the window (and its sentence) until the user closes it;
+  // only a success auto-closes after the beat.
+  const windows = fakeWindows();
+  const prompt = createPromptFlow({ windows, beatMs: 0, deliver: () => {} });
+  const decision = prompt.ask({ requestId: 'r9', method: 'nip44_encrypt', host: 'h.example', preview: 'x' });
+  await new Promise((r) => setImmediate(r));
+  await prompt.decide({ requestId: 'r9', approve: true });
+
+  const before = windows.removedCount;
+  await prompt.settle('r9', 'err', 'the device requires its PIN before this operation — verify to continue');
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(windows.removedCount, before, 'no scheduled close for an error — the sentence stays readable');
+});
+
 test('US-1723 settle for an unknown requestId is inert — no throw, no push, no resurrection', async () => {
   const windows = fakeWindows();
   const delivered = [];

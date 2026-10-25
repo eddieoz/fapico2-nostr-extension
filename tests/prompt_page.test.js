@@ -178,7 +178,11 @@ test('US-1724 the page consumes prompt-settled and disconnect, and drives the ou
   const js = await read('src/prompt/prompt.js');
   assert.ok(/api\.onEvent\(\(frame\)\s*=>/.test(js), 'subscribes to worker push frames');
   assert.ok(/prompt-settled/.test(js), 'handles the prompt-settled frame');
-  assert.ok(/showOutcome\(\s*settleBeat\(/.test(js), 'the settle frame drives the outcome beat');
+  // The settle frame drives the beat — inline or via a local, the sentence
+  // comes from settleBeat(method, frame); an error beat keeps the window open
+  // (the sentence is the diagnosis — the chat.nostr.com field run).
+  assert.ok(/settleBeat\(method,\s*frame\)/.test(js), 'the beat is derived from the settle frame');
+  assert.ok(/showOutcome\(/.test(js), 'the outcome beat is shown');
   assert.ok(/api\.onDisconnect\(\(\)\s*=>/.test(js), 'subscribes to disconnect');
   assert.ok(/LOST_CONNECTION_TEXT|connection to the extension was lost/.test(js), 'shows the lost-connection notice');
 });
