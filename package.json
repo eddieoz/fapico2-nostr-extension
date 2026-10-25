@@ -1,6 +1,6 @@
 {
   "name": "fapico2-nostr-extension",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Nostr-only, hardware-first browser extension: keys live on the fapico2 board, consent is a physical touch",
   "type": "module",
   "private": true,

@@ -8185,10 +8185,8 @@
         const prev = consentLine;
         let lineDone;
         consentLine = new Promise((r) => lineDone = r);
-        let entered = false;
         try {
           await prev;
-          entered = true;
           const url = `prompt.html?request=${encodeURIComponent(requestId)}&method=${encodeURIComponent(method)}&host=${encodeURIComponent(host)}&preview=${encodeURIComponent(preview)}`;
           const win = await windows.create({
             url,
@@ -8201,7 +8199,7 @@
             outstanding.set(requestId, { resolve, reject, windowId: win.id, lineDone });
           });
         } catch (err) {
-          if (!entered) lineDone();
+          lineDone();
           throw err;
         }
       },
@@ -8360,13 +8358,21 @@
         e.code = denial.error.code;
         throw e;
       }
-      if (decision.remember) {
-        await permissions.grant(host, [method]);
-      } else {
-        permissions.grantSession(host, [method]);
+      try {
+        if (decision.remember) {
+          await permissions.grant(host, [method]);
+        } else {
+          permissions.grantSession(host, [method]);
+        }
+        const outcome = { result: { consented: true } };
+        if (pending && requestId != null) await pending.settle(requestId, outcome);
+      } catch (err) {
+        try {
+          await prompt.settle(requestId, "err", err?.message ?? "the decision could not be recorded");
+        } catch {
+        }
+        throw err;
       }
-      const outcome = { result: { consented: true } };
-      if (pending && requestId != null) await pending.settle(requestId, outcome);
       return {
         host,
         method,

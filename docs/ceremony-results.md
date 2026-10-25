@@ -7,6 +7,11 @@ incomplete entry stays open at the top until a complete one supersedes it.
 
 ## PENDING — NOSTR-EXT-RT (US-1747/US-1749): decrypt framing + reply port — ceremony owed before release
 
+> Released anyway as v0.3.1 by operator decision (2026-10-25): the field
+> fixes it blocks (site compatibility, prompt storm, PIN guidance) were
+> needed on chat.nostr.com now. The re-run remains owed before the next
+> release.
+
 **Change under record (2026-10-20, main `fdc4269`):** two hardware-adjacent
 behavior changes shipped with the red-team hardening epic.
 
