@@ -86,6 +86,36 @@ test('US-1699 unknown method names never enter the store', async () => {
     'key management is popup-only — it is never a page grant');
 });
 
+test('US-1699 concurrent grants do not lose each other — the popup-storm race', async () => {
+  // The chat.nostr.com field report: several prompts approved in quick
+  // succession (the site fires get_public_key, nip44_encrypt and sign_event
+  // concurrently), each with remember — and the popups kept coming. The
+  // store's read-modify-write of the whole grants map lost every earlier
+  // method's grant to the last write. Both approvals must survive.
+  const storage = storageStub();
+  let releaseFirstWrite;
+  const gate = new Promise((r) => (releaseFirstWrite = r));
+  const rawSet = storage.set.bind(storage);
+  let firstSet = true;
+  storage.set = async (obj) => {
+    if (firstSet) {
+      firstSet = false;
+      await gate; // park the first write; the second grant reads underneath it
+    }
+    return rawSet(obj);
+  };
+  const store = createPermissionStore({ storage });
+  const a = store.grant('chat.example', ['get_public_key']);
+  const b = store.grant('chat.example', ['nip44_encrypt']);
+  await new Promise((r) => setTimeout(r, 10)); // b's read happens mid-a's-write
+  releaseFirstWrite();
+  await Promise.all([a, b]);
+  assert.equal(await store.check('chat.example', 'get_public_key'), 'persisted',
+    'the first remembered approval is not clobbered by the second');
+  assert.equal(await store.check('chat.example', 'nip44_encrypt'), 'persisted',
+    'the second remembered approval lands too');
+});
+
 test('US-1699 the Sites list and revoke-all', async () => {
   const store = createPermissionStore({ storage: storageStub(), now: () => 7 });
   await store.grant('f.example', ['sign_event']);

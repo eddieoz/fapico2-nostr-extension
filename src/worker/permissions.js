@@ -23,6 +23,19 @@ export function createPermissionStore({ storage, now = () => Date.now() } = {}) 
   // Session-only grants: `${host}|${method}` strings, memory only.
   const sessionGrants = new Set();
 
+  // The chat.nostr.com field report (2026-10-25): several prompts approved
+  // in quick succession — the site fires get_public_key, nip44_encrypt and
+  // sign_event concurrently — and every earlier method's grant was lost:
+  // grant() is a read-modify-write of the WHOLE grants map, so interleaved
+  // decisions each wrote back a base without the others' methods. One
+  // writer at a time; each read happens inside the serialized section.
+  let writes = Promise.resolve();
+  const serialized = (fn) => {
+    const run = writes.then(fn, fn);
+    writes = run.then(() => {}, () => {});
+    return run;
+  };
+
   async function readRaw() {
     const got = await storage.get(GRANTS_KEY);
     const raw = got?.[GRANTS_KEY];
@@ -64,14 +77,16 @@ export function createPermissionStore({ storage, now = () => Date.now() } = {}) 
     },
 
     /** Persist a grant covering exactly the methods approved. */
-    async grant(host, methods) {
-      const list = [...new Set(methods)].filter((m) => GRANTABLE_METHODS.has(m));
-      if (list.length === 0) return;
-      const grants = await readRaw();
-      const rec = grants[host] ?? { grantedAt: now(), methods: {} };
-      for (const m of list) rec.methods[m] = now();
-      grants[host] = rec;
-      await write(grants);
+    grant(host, methods) {
+      return serialized(async () => {
+        const list = [...new Set(methods)].filter((m) => GRANTABLE_METHODS.has(m));
+        if (list.length === 0) return;
+        const grants = await readRaw();
+        const rec = grants[host] ?? { grantedAt: now(), methods: {} };
+        for (const m of list) rec.methods[m] = now();
+        grants[host] = rec;
+        await write(grants);
+      });
     },
 
     /** A this-time-only grant — memory, dies with the worker. */
@@ -82,18 +97,20 @@ export function createPermissionStore({ storage, now = () => Date.now() } = {}) 
     },
 
     /** Revocation deletes the record immediately (a null host = all). */
-    async revoke(host = null) {
-      if (host === null) {
-        sessionGrants.clear();
-        await write({});
-        return;
-      }
-      const grants = await readRaw();
-      delete grants[host];
-      await write(grants);
-      for (const key of [...sessionGrants]) {
-        if (key.startsWith(`${host}|`)) sessionGrants.delete(key);
-      }
+    revoke(host = null) {
+      return serialized(async () => {
+        if (host === null) {
+          sessionGrants.clear();
+          await write({});
+          return;
+        }
+        const grants = await readRaw();
+        delete grants[host];
+        await write(grants);
+        for (const key of [...sessionGrants]) {
+          if (key.startsWith(`${host}|`)) sessionGrants.delete(key);
+        }
+      });
     },
 
     /** The Sites screen: every persisted grant with host, methods, date. */

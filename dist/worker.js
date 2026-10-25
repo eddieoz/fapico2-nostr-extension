@@ -8022,6 +8022,14 @@
   ]);
   function createPermissionStore({ storage, now: now2 = () => Date.now() } = {}) {
     const sessionGrants = /* @__PURE__ */ new Set();
+    let writes = Promise.resolve();
+    const serialized = (fn) => {
+      const run = writes.then(fn, fn);
+      writes = run.then(() => {
+      }, () => {
+      });
+      return run;
+    };
     async function readRaw() {
       const got = await storage.get(GRANTS_KEY);
       const raw = got?.[GRANTS_KEY];
@@ -8051,14 +8059,16 @@
         return grants[host]?.methods?.[method] ? "persisted" : false;
       },
       /** Persist a grant covering exactly the methods approved. */
-      async grant(host, methods) {
-        const list = [...new Set(methods)].filter((m) => GRANTABLE_METHODS.has(m));
-        if (list.length === 0) return;
-        const grants = await readRaw();
-        const rec = grants[host] ?? { grantedAt: now2(), methods: {} };
-        for (const m of list) rec.methods[m] = now2();
-        grants[host] = rec;
-        await write(grants);
+      grant(host, methods) {
+        return serialized(async () => {
+          const list = [...new Set(methods)].filter((m) => GRANTABLE_METHODS.has(m));
+          if (list.length === 0) return;
+          const grants = await readRaw();
+          const rec = grants[host] ?? { grantedAt: now2(), methods: {} };
+          for (const m of list) rec.methods[m] = now2();
+          grants[host] = rec;
+          await write(grants);
+        });
       },
       /** A this-time-only grant — memory, dies with the worker. */
       grantSession(host, methods) {
@@ -8067,18 +8077,20 @@
         }
       },
       /** Revocation deletes the record immediately (a null host = all). */
-      async revoke(host = null) {
-        if (host === null) {
-          sessionGrants.clear();
-          await write({});
-          return;
-        }
-        const grants = await readRaw();
-        delete grants[host];
-        await write(grants);
-        for (const key of [...sessionGrants]) {
-          if (key.startsWith(`${host}|`)) sessionGrants.delete(key);
-        }
+      revoke(host = null) {
+        return serialized(async () => {
+          if (host === null) {
+            sessionGrants.clear();
+            await write({});
+            return;
+          }
+          const grants = await readRaw();
+          delete grants[host];
+          await write(grants);
+          for (const key of [...sessionGrants]) {
+            if (key.startsWith(`${host}|`)) sessionGrants.delete(key);
+          }
+        });
       },
       /** The Sites screen: every persisted grant with host, methods, date. */
       async list() {
