@@ -35,10 +35,13 @@ test('US-1705 the three handlers ride the vendor bytes the firmware maps', async
   await call(handlers, 'verify_pin', ['731742']);
   await call(handlers, 'lock', []);
   const cmds = mock.calls.map((c) => c.cmd);
-  assert.deepEqual(cmds, [NOSTR_CMD.SET_PIN, NOSTR_CMD.VERIFY_PIN, NOSTR_CMD.LOCK]);
+  // The PING after VERIFY is the forced GET_INFO read-back (US-1748 board
+  // run): the popup renders the lock indicator and the touch checkbox from
+  // the advertisement, which the verify just moved.
+  assert.deepEqual(cmds, [NOSTR_CMD.SET_PIN, NOSTR_CMD.VERIFY_PIN, NOSTR_CMD.PING, NOSTR_CMD.LOCK]);
   assert.equal(cmds[0], 0x4c);
   assert.equal(cmds[1], 0x4b);
-  assert.equal(cmds[2], 0x4d);
+  assert.equal(cmds[3], 0x4d);
 });
 
 test('US-1705 the PIN rides `arg` whole; the lock command carries an empty arg', async () => {
@@ -47,8 +50,19 @@ test('US-1705 the PIN rides `arg` whole; the lock command carries an empty arg',
   await call(handlers, 'verify_pin', ['731742']);
   assert.equal(mock.calls[1].argLen, 6, 'the PIN is the whole arg');
   await call(handlers, 'lock', []);
-  assert.equal(mock.calls[2].argLen, 0);
+  assert.equal(mock.calls[3].argLen, 0);
   assert.equal(mock.unlocked, false, 'lock dropped the session');
+});
+
+test('US-1705 verify_pin answers with the fresh advertisement — the session flag is live', async () => {
+  // US-1748 board-run finding: the popup rendered the touch checkbox and
+  // the lock indicator from the pre-verify read, so an open session showed
+  // locked until the popup was reopened. The verify answer carries the
+  // read-back instead.
+  const { handlers } = rig();
+  await call(handlers, 'set_pin', ['731742']);
+  const r = await call(handlers, 'verify_pin', ['731742']);
+  assert.equal(r.info.flags & 0x02, 0x02, 'FLAG_SESSION_UNLOCKED is live in the read-back');
 });
 
 test('US-1705 change_pin sends the lc-prefixed payload at idx 1', async () => {

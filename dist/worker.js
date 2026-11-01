@@ -7938,7 +7938,8 @@
       // --- PIN custody (US-1705) — touch-free: the PIN is the consent ----
       verify_pin: async ([pin]) => {
         await runOk(NOSTR_CMD.VERIFY_PIN, 0, pinBytes(pin));
-        return {};
+        const res = await device.ping({ force: true });
+        return { info: parseInfoBody(res.data) };
       },
       set_pin: async ([pin]) => {
         await runOk(NOSTR_CMD.SET_PIN, 0, pinBytes(pin));
