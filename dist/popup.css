@@ -245,6 +245,19 @@ input[type='text'], input[type='password'], textarea {
   color: var(--ink);
 }
 
+/* US-1748 — the touch-for-signing checkbox on the PIN manage screen: the
+   house checkbox shape (the .check treatment, centered for a one-line
+   label), scoped by id because the row markup carries class="row". */
+#pin-manage-touch-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 12px 0;
+  font: 12px/1.5 var(--sans);
+  color: var(--ink);
+  cursor: pointer;
+}
+
 /* US-1728 — eight slots on ONE row: never wrap, share the width evenly, so a
    360px popup never drops slot 7 onto a second line. */
 .slot-picker { display: flex; gap: 6px; flex-wrap: nowrap; margin: 8px 0; }

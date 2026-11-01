@@ -8,12 +8,14 @@
 // If the firmware changes the wire, the change lands here first as an
 // explicit, reviewed edit.
 export const SOURCE_COMMIT = 'd15abe7';
-// The fixture has been extended past d15abe7 twice: the PIN custody dialect
-// (fapico2 feat/nostr-pin, through US-1702, nostr_wire.rs NOSTR_CMD
+// The fixture has been extended past d15abe7 three times: the PIN custody
+// dialect (fapico2 feat/nostr-pin, through US-1702, nostr_wire.rs NOSTR_CMD
 // 0x4B..0x4D and the SW_PIN_SESSION_REQUIRED / SW_PIN_LOCKED vocabulary),
-// and the custody-ceremony bytes (US-1714/US-1716, NOSTR_CMD 0x4E and the
-// SW_SEALED_UNAVAILABLE / SW_CEREMONY_NOT_NEEDED vocabulary) — each an
-// explicit, reviewed edit per the rule below.
+// the custody-ceremony bytes (US-1714/US-1716, NOSTR_CMD 0x4E and the
+// SW_SEALED_UNAVAILABLE / SW_CEREMONY_NOT_NEEDED vocabulary), and the
+// touch-policy verb (US-1748, fapico2 fix/nostr-allowance, NOSTR_CMD 0x4F —
+// the envelope idx rides P1: 0 re-enables the touch, 1 disables it for the
+// signing arms) — each an explicit, reviewed edit per the rule below.
 
 // firmware/src/nostr_wire.rs — NOSTR_CMD_* (u8).
 export const NOSTR_CMD = {
@@ -38,6 +40,11 @@ export const NOSTR_CMD = {
   // extension's "Migrate now" dialog drives. The consent is the dialog,
   // not a touch — the applet is neither touch-gated nor session-gated.
   CEREMONY_START: 0x4e,
+  // The touch policy (US-1748, fapico2 fix/nostr-allowance). The envelope
+  // idx rides P1: 0 re-enables the touch, 1 disables it for the three
+  // signing arms. The disable leg needs an open PIN session AND a physical
+  // consent press; a payload on the wire is refused 0x6A80.
+  SET_TOUCH_POLICY: 0x4f,
 };
 
 // firmware/src/nostr_wire.rs — the D13 §2.2.0 vocabulary as it crosses the

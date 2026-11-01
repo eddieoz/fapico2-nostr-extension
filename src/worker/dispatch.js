@@ -48,6 +48,9 @@ export const TRUSTED_ONLY_METHODS = new Set([
   // and it lives in the extension UI; a tab sender never drives the
   // irreversible verb.
   'ceremony_start',
+  // The touch-policy verb (US-1748) — rewriting the touch consent model is
+  // a custody decision for the extension UI; a page never drives it.
+  'touch_policy_set',
 ]);
 
 /** The Flamingo sender gate, original implementation. */

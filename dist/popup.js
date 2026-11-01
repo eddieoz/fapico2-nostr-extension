@@ -7193,17 +7193,32 @@
 
   // src/worker/pin_flow.js
   var CAP_PIN_MGMT = 4;
+  var CAP_TOUCH_POLICY = 16;
   var FLAG_PIN_SET = 1;
   var FLAG_SESSION_UNLOCKED = 2;
+  var FLAG_TOUCH_BYPASS = 8;
   function parsePinState(info) {
     const caps = info?.caps ?? 0;
     const flags = info?.flags ?? 0;
     const supported = (caps & CAP_PIN_MGMT) !== 0;
     const pinSet = (flags & FLAG_PIN_SET) !== 0;
     const unlocked = (flags & FLAG_SESSION_UNLOCKED) !== 0;
-    if (!supported) return { supported, pinSet, unlocked, ui: "unsupported" };
-    if (!pinSet) return { supported, pinSet, unlocked, ui: "offer" };
-    return { supported, pinSet, unlocked, ui: unlocked ? "ready" : "locked" };
+    const touchSupported = (caps & CAP_TOUCH_POLICY) !== 0;
+    const touchBypass = (flags & FLAG_TOUCH_BYPASS) !== 0;
+    if (!supported) {
+      return { supported, pinSet, unlocked, touchSupported, touchBypass, ui: "unsupported" };
+    }
+    if (!pinSet) {
+      return { supported, pinSet, unlocked, touchSupported, touchBypass, ui: "offer" };
+    }
+    return {
+      supported,
+      pinSet,
+      unlocked,
+      touchSupported,
+      touchBypass,
+      ui: unlocked ? "ready" : "locked"
+    };
   }
   var LOCKED_OUT_MESSAGE = "the device is locked \u2014 too many wrong PINs. Recovery is a factory reset from the management applet, which destroys every identity on the board.";
   function createPinFlow() {
@@ -7278,6 +7293,13 @@
       lockOk() {
         pending = null;
         return show2({ ui: "locked", attempts: 3, state: view.state });
+      },
+      /** US-1748 — a successful SET_TOUCH_POLICY re-read the advertisement:
+       *  the state refreshes in place. Pending ops and the current surface
+       *  are untouched — only what GET_INFO says about the board moved. */
+      touchInfoRefreshed(info) {
+        const state2 = parsePinState(info);
+        return show2({ ...view, state: state2 });
       }
     };
   }
@@ -7329,8 +7351,15 @@
     return {
       statusLine: state2.unlocked ? "the session is open" : "the session is locked",
       canVerify: !state2.unlocked,
-      canLock: state2.unlocked
+      canLock: state2.unlocked,
+      touch: touchPolicyModel(state2)
     };
+  }
+  function touchPolicyModel(state2) {
+    if (!state2 || !state2.touchSupported) {
+      return { supported: false, requireTouch: true, note: "firmware does not support touch bypass" };
+    }
+    return { supported: true, requireTouch: !state2.touchBypass, note: "" };
   }
   function setModel() {
     return {
@@ -7636,6 +7665,12 @@
     $("pin-manage-status").textContent = m.statusLine;
     $("pin-manage-verify").hidden = !m.canVerify;
     $("pin-manage-lock").hidden = !m.canLock;
+    const box = $("pin-manage-touch");
+    const note = $("pin-manage-touch-note");
+    box.checked = m.touch.requireTouch;
+    box.disabled = !m.touch.supported;
+    note.textContent = m.touch.note;
+    note.hidden = !m.touch.note;
   }
   $("pin-manage-verify").addEventListener("click", () => openPinVerify());
   $("pin-manage-change").addEventListener("click", () => {
@@ -7654,6 +7689,19 @@
     renderLockIndicator();
     renderPinManage();
     notice("locked \u2014 signing asks for the PIN again after the board restarts", "ok");
+  });
+  $("pin-manage-touch").addEventListener("change", async (ev) => {
+    const box = ev.target;
+    const disable = !box.checked;
+    box.disabled = true;
+    try {
+      const r = await api.call("touch_policy_set", [disable]);
+      pinFlow.touchInfoRefreshed(r.info);
+    } catch (err) {
+      deviceCallNotice(err);
+    } finally {
+      renderPinManage();
+    }
   });
   $("pin-manage-back").addEventListener("click", () => show("keys"));
   function renderPinChange() {

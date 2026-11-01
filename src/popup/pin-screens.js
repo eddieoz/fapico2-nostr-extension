@@ -68,13 +68,28 @@ export function verifyModel(view, pendingMethod = null) {
 }
 
 /** US-1706 — the manage screen's buttons: Verify only when locked, Lock
- *  only while unlocked. Changing the PIN is always available. */
+ *  only while unlocked. Changing the PIN is always available. US-1748 —
+ *  the touch-for-signing checkbox rides the same model, so the screen has
+ *  one render path. */
 export function manageModel(state) {
   return {
     statusLine: state.unlocked ? 'the session is open' : 'the session is locked',
     canVerify: !state.unlocked,
     canLock: state.unlocked,
+    touch: touchPolicyModel(state),
   };
+}
+
+/** US-1748 — the touch-policy checkbox, from the parsed GET_INFO state.
+ *  Checked = the touch is required for signing (the default and the safe
+ *  reading on anything the firmware does not say otherwise — an old board
+ *  or a missing state object renders the box checked and disabled, never
+ *  as if a bypass were live). */
+export function touchPolicyModel(state) {
+  if (!state || !state.touchSupported) {
+    return { supported: false, requireTouch: true, note: 'firmware does not support touch bypass' };
+  }
+  return { supported: true, requireTouch: !state.touchBypass, note: '' };
 }
 
 /** US-1706 — the set screen's static copy. */

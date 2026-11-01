@@ -31,7 +31,14 @@
     // US-1714/US-1716 — the custody ceremony. The consent is the dialog,
     // not a touch: the applet is neither touch-gated nor session-gated, and
     // the run is the irreversible thing the dialog discloses.
-    CEREMONY_START: 78
+    CEREMONY_START: 78,
+    // US-1748 — the touch-policy verb. The envelope idx rides P1 on the
+    // device: 0 re-enables the touch, 1 disables it for the three signing
+    // arms (SIGN / NIP44_ENC / NIP44_DEC). The disable leg needs an open PIN
+    // session AND a physical consent press on the board — 0x6985 when the
+    // press never came; LOCK, a power cycle and a factory wipe clear the
+    // bypass again.
+    SET_TOUCH_POLICY: 79
   };
   var SW = {
     OK: 36864,
