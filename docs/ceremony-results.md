@@ -5,6 +5,37 @@ the six ordered steps, their status words and timings, the operator, and
 the board/firmware it ran against. A partial pass is not a pass — an
 incomplete entry stays open at the top until a complete one supersedes it.
 
+## PASS (operator board run) — NOSTR-TOUCH-BYPASS follow-ups (US-1748): the four board-run wedges — 2026-11-01
+
+**Change under record:** `7509f96` + `9a1bf8f` — the fixes for what the
+operator's board session against the checkbox found: the flag rode the
+variadic port call wrapped (`[[false]]`, so every toggle answered
+BAD_TOUCH_POLICY), the toggle was offered on a locked session (the board's
+0x6982 waited behind it), the gate lifted only after a popup reopen (the
+verify answer carried no fresh GET_INFO), and the armed consent press had
+no on-extension announcement.
+
+**Board/firmware:** fapico2, the same flashed board as the
+NOSTR-TOUCH-BYPASS pass above. **Operator:** eddieoz.
+
+**What was observed (operator report, against the fixed builds):**
+
+- The BAD_TOUCH_POLICY sentence on every toggle, with the PIN verified —
+  the array-wrap at the port boundary; fixed bare-flag and pinned by a
+  dispatch-level regression test (the frame shape, not the handler shape).
+- The checkbox enabled while the session was locked; fixed read-only with
+  the "verify the PIN to change this" note.
+- After a verified PIN the checkbox stayed read-only until the popup was
+  reopened — the state machine kept the pre-verify GET_INFO; fixed by the
+  forced read-back riding the verify answer.
+- Unchecking armed the board for the consent press with no message on the
+  extension; fixed by the touch bar naming the ceremony while the leg is
+  in flight.
+
+The operator validated the findings on hardware and merged the fix branch;
+the press windows themselves are firmware-enforced and unchanged by these
+commits.
+
 ## PASS — NOSTR-TOUCH-BYPASS (US-1748): the touch-for-signing checkbox over SET_TOUCH_POLICY — 2026-11-01
 
 **Change under record:** `e20b81a` — the manage-screen checkbox sends
