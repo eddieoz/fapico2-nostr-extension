@@ -15,10 +15,16 @@
 export const CAP_KEY_MGMT = 0x0001;
 export const CAP_NIP44 = 0x0002;
 export const CAP_PIN_MGMT = 0x0004;
+/** US-1748 — SET_TOUCH_POLICY (0x4F) is served, unconditional on new
+ *  firmware: the touch-for-signing policy can be read and rewritten. */
+export const CAP_TOUCH_POLICY = 0x0010;
 
 /** GET_INFO flags bits (apps/nostr FLAG_*, US-1700). */
 export const FLAG_PIN_SET = 0x01;
 export const FLAG_SESSION_UNLOCKED = 0x02;
+/** US-1748 — the live touch bypass: the three signing arms do not ask for
+ *  the press. LOCK, a power cycle and a factory wipe clear it again. */
+export const FLAG_TOUCH_BYPASS = 0x08;
 
 /** The GET_INFO body: applet_ver(2) ‖ caps(2) ‖ max_plaintext(2) ‖
  *  n_identities(1) ‖ flags(1). Pre-custody boards answer 7 bytes — the
@@ -43,9 +49,24 @@ export function parsePinState(info) {
   const supported = (caps & CAP_PIN_MGMT) !== 0;
   const pinSet = (flags & FLAG_PIN_SET) !== 0;
   const unlocked = (flags & FLAG_SESSION_UNLOCKED) !== 0;
-  if (!supported) return { supported, pinSet, unlocked, ui: 'unsupported' };
-  if (!pinSet) return { supported, pinSet, unlocked, ui: 'offer' };
-  return { supported, pinSet, unlocked, ui: unlocked ? 'ready' : 'locked' };
+  // US-1748 — the touch-policy facts ride every state, so the manage
+  // screen can render the checkbox whatever the custody surface says.
+  const touchSupported = (caps & CAP_TOUCH_POLICY) !== 0;
+  const touchBypass = (flags & FLAG_TOUCH_BYPASS) !== 0;
+  if (!supported) {
+    return { supported, pinSet, unlocked, touchSupported, touchBypass, ui: 'unsupported' };
+  }
+  if (!pinSet) {
+    return { supported, pinSet, unlocked, touchSupported, touchBypass, ui: 'offer' };
+  }
+  return {
+    supported,
+    pinSet,
+    unlocked,
+    touchSupported,
+    touchBypass,
+    ui: unlocked ? 'ready' : 'locked',
+  };
 }
 
 // US-1707 — the capability-gated UI states. The v0.2.0 generation carries
@@ -156,6 +177,14 @@ export function createPinFlow() {
     lockOk() {
       pending = null;
       return show({ ui: 'locked', attempts: 3, state: view.state });
+    },
+
+    /** US-1748 — a successful SET_TOUCH_POLICY re-read the advertisement:
+     *  the state refreshes in place. Pending ops and the current surface
+     *  are untouched — only what GET_INFO says about the board moved. */
+    touchInfoRefreshed(info) {
+      const state = parsePinState(info);
+      return show({ ...view, state });
     },
   };
 }

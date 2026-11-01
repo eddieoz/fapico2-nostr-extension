@@ -59,6 +59,13 @@ export const NOSTR_CMD = {
   // not a touch: the applet is neither touch-gated nor session-gated, and
   // the run is the irreversible thing the dialog discloses.
   CEREMONY_START: 0x4e,
+  // US-1748 — the touch-policy verb. The envelope idx rides P1 on the
+  // device: 0 re-enables the touch, 1 disables it for the three signing
+  // arms (SIGN / NIP44_ENC / NIP44_DEC). The disable leg needs an open PIN
+  // session AND a physical consent press on the board — 0x6985 when the
+  // press never came; LOCK, a power cycle and a factory wipe clear the
+  // bypass again.
+  SET_TOUCH_POLICY: 0x4f,
 };
 
 // The D13 status vocabulary, as it crosses the transport: the vendor CBOR

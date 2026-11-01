@@ -117,7 +117,20 @@ test('US-1690 src/core is byte-identical to the OpenXrypt d431b00 originals exce
         ],
       },
       {
-        at: 71, // after the original SW's STORE_FAULT row (60, +7 from the NOSTR_CMD insertion, +4 from the ceremony verb)
+        at: 61, // after the ceremony verb (57, +4)
+        reason: 'US-1748 — the touch-policy verb on the vendor dialect (fapico2 fix/nostr-allowance)',
+        lines: [
+          '  // US-1748 — the touch-policy verb. The envelope idx rides P1 on the',
+          '  // device: 0 re-enables the touch, 1 disables it for the three signing',
+          '  // arms (SIGN / NIP44_ENC / NIP44_DEC). The disable leg needs an open PIN',
+          '  // session AND a physical consent press on the board — 0x6985 when the',
+          '  // press never came; LOCK, a power cycle and a factory wipe clear the',
+          '  // bypass again.',
+          '  SET_TOUCH_POLICY: 0x4f,',
+        ],
+      },
+      {
+        at: 78, // after the original SW's STORE_FAULT row (60, +7 from the NOSTR_CMD insertion, +4 from the ceremony verb, +7 from the touch-policy verb)
         reason: 'US-1705 — the PIN custody vocabulary (6982, 63c0)',
         lines: [
           '  // The PIN custody vocabulary (US-1691). PIN_NOT_SET shares 0x6a82 with',
@@ -130,7 +143,7 @@ test('US-1690 src/core is byte-identical to the OpenXrypt d431b00 originals exce
         ],
       },
       {
-        at: 78, // after the PIN vocabulary rows (71, +7)
+        at: 85, // after the PIN vocabulary rows (78, +7)
         reason: 'US-1714 — the custody-ceremony vocabulary (6f01, 6f02)',
         lines: [
           '  // The custody-ceremony vocabulary (US-1714): 0x6F01 is the sealed board',

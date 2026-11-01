@@ -311,6 +311,24 @@ export function createHandlers({
       throw new SwError('CEREMONY_START', sw);
     },
 
+    // --- touch policy (US-1748) — trusted-only: rewriting the consent
+    // model is a custody decision, not a page's. The disable leg needs an
+    // open PIN session AND a physical press on the board; the refusals
+    // (6A82 no PIN, 0x6982 session closed, 0x6985 the press never came,
+    // 6A86 bad P1) cross typed from the error map.
+    touch_policy_set: async ([disable]) => {
+      if (typeof disable !== 'boolean') {
+        throw new SignerError('BAD_TOUCH_POLICY', 'the touch-policy flag must be true or false');
+      }
+      // The envelope idx rides P1 on the device: 0 re-enables the touch,
+      // 1 disables it for the signing arms.
+      await runOk(NOSTR_CMD.SET_TOUCH_POLICY, disable ? 1 : 0, new Uint8Array(0));
+      // The advertisement moved: a fresh GET_INFO so the popup's render
+      // never relies on what the board said before the change.
+      const res = await device.ping();
+      return { info: parseInfoBody(res.data) };
+    },
+
     get_grants: async () => listGrants(),
     revoke_grant: async ([host]) => revoke(host),
     revoke_all: async () => revoke(null),

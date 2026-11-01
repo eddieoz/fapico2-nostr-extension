@@ -258,7 +258,14 @@
     // US-1714/US-1716 — the custody ceremony. The consent is the dialog,
     // not a touch: the applet is neither touch-gated nor session-gated, and
     // the run is the irreversible thing the dialog discloses.
-    CEREMONY_START: 78
+    CEREMONY_START: 78,
+    // US-1748 — the touch-policy verb. The envelope idx rides P1 on the
+    // device: 0 re-enables the touch, 1 disables it for the three signing
+    // arms (SIGN / NIP44_ENC / NIP44_DEC). The disable leg needs an open PIN
+    // session AND a physical consent press on the board — 0x6985 when the
+    // press never came; LOCK, a power cycle and a factory wipe clear the
+    // bypass again.
+    SET_TOUCH_POLICY: 79
   };
   var SW = {
     OK: 36864,
@@ -7973,6 +7980,19 @@
           });
         }
         throw new SwError("CEREMONY_START", sw);
+      },
+      // --- touch policy (US-1748) — trusted-only: rewriting the consent
+      // model is a custody decision, not a page's. The disable leg needs an
+      // open PIN session AND a physical press on the board; the refusals
+      // (6A82 no PIN, 0x6982 session closed, 0x6985 the press never came,
+      // 6A86 bad P1) cross typed from the error map.
+      touch_policy_set: async ([disable]) => {
+        if (typeof disable !== "boolean") {
+          throw new SignerError("BAD_TOUCH_POLICY", "the touch-policy flag must be true or false");
+        }
+        await runOk(NOSTR_CMD.SET_TOUCH_POLICY, disable ? 1 : 0, new Uint8Array(0));
+        const res = await device.ping();
+        return { info: parseInfoBody(res.data) };
       },
       get_grants: async () => listGrants(),
       revoke_grant: async ([host]) => revoke(host),

@@ -385,6 +385,15 @@ function renderPinManage() {
   $('pin-manage-status').textContent = m.statusLine;
   $('pin-manage-verify').hidden = !m.canVerify;
   $('pin-manage-lock').hidden = !m.canLock;
+  // US-1748 — the touch-for-signing checkbox renders the board's live
+  // policy: checked = the touch is required, disabled on firmware without
+  // CAP_TOUCH_POLICY, the note naming an unsupported board.
+  const box = $('pin-manage-touch');
+  const note = $('pin-manage-touch-note');
+  box.checked = m.touch.requireTouch;
+  box.disabled = !m.touch.supported;
+  note.textContent = m.touch.note;
+  note.hidden = !m.touch.note;
 }
 
 $('pin-manage-verify').addEventListener('click', () => openPinVerify());
@@ -404,6 +413,24 @@ $('pin-manage-lock').addEventListener('click', async () => {
   renderLockIndicator();
   renderPinManage();
   notice('locked — signing asks for the PIN again after the board restarts', 'ok');
+});
+// US-1748 — flipping the checkbox rewrites the board's touch policy: the
+// disable leg needs the session AND a consent press on the board, so the
+// wait is real. Any refusal is noticed by sentence and the re-render snaps
+// the checkbox back from pinFlow's unchanged state — a refusal never
+// leaves the UI claiming a bypass the board does not carry.
+$('pin-manage-touch').addEventListener('change', async (ev) => {
+  const box = ev.target;
+  const disable = !box.checked;
+  box.disabled = true;
+  try {
+    const r = await api.call('touch_policy_set', [disable]);
+    pinFlow.touchInfoRefreshed(r.info);
+  } catch (err) {
+    deviceCallNotice(err);
+  } finally {
+    renderPinManage();
+  }
 });
 $('pin-manage-back').addEventListener('click', () => show('keys'));
 

@@ -522,17 +522,32 @@
 
   // src/worker/pin_flow.js
   var CAP_PIN_MGMT = 4;
+  var CAP_TOUCH_POLICY = 16;
   var FLAG_PIN_SET = 1;
   var FLAG_SESSION_UNLOCKED = 2;
+  var FLAG_TOUCH_BYPASS = 8;
   function parsePinState(info) {
     const caps = info?.caps ?? 0;
     const flags = info?.flags ?? 0;
     const supported = (caps & CAP_PIN_MGMT) !== 0;
     const pinSet = (flags & FLAG_PIN_SET) !== 0;
     const unlocked = (flags & FLAG_SESSION_UNLOCKED) !== 0;
-    if (!supported) return { supported, pinSet, unlocked, ui: "unsupported" };
-    if (!pinSet) return { supported, pinSet, unlocked, ui: "offer" };
-    return { supported, pinSet, unlocked, ui: unlocked ? "ready" : "locked" };
+    const touchSupported = (caps & CAP_TOUCH_POLICY) !== 0;
+    const touchBypass = (flags & FLAG_TOUCH_BYPASS) !== 0;
+    if (!supported) {
+      return { supported, pinSet, unlocked, touchSupported, touchBypass, ui: "unsupported" };
+    }
+    if (!pinSet) {
+      return { supported, pinSet, unlocked, touchSupported, touchBypass, ui: "offer" };
+    }
+    return {
+      supported,
+      pinSet,
+      unlocked,
+      touchSupported,
+      touchBypass,
+      ui: unlocked ? "ready" : "locked"
+    };
   }
 
   // src/prompt/prompt.js

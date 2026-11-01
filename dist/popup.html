@@ -169,6 +169,12 @@
         <button id="pin-manage-change" class="ghost">Change PIN</button>
         <button id="pin-manage-lock" class="ghost">Lock now</button>
       </div>
+      <!-- US-1748 — the touch-for-signing policy. Checked = every signing
+           arm asks for the press; unchecking it asks the board to disable
+           the touch, which needs the session and its own consent press.
+           Rendered from GET_INFO's CAP_TOUCH_POLICY / FLAG_TOUCH_BYPASS. -->
+      <label class="row" id="pin-manage-touch-row"><input type="checkbox" id="pin-manage-touch" /><span>Require touch for signing</span></label>
+      <p class="muted" id="pin-manage-touch-note" hidden></p>
       <div class="actions">
         <button id="pin-manage-back" class="ghost">Back</button>
       </div>

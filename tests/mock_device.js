@@ -51,9 +51,13 @@ export class MockDevice {
     // The custody ceremony (US-1716): the mock starts migration-complete;
     // a test opts a board into the pending state via `ceremonyPending`.
     this.ceremonyPending = false;
+    // The touch policy (US-1748): the bypass starts off — every signing
+    // arm asks for the press until SET_TOUCH_POLICY idx 1 lands.
+    this.touchBypass = false;
     // The GET_INFO body (US-1706): applet_ver ‖ caps ‖ max_plaintext ‖
-    // n ‖ flags — a custody-generation board with no PIN by default.
-    this.info = { appletVer: [0x00, 0x02], caps: 0x0007, maxPlaintext: 0x0700, nIdentities: this.keys.length, flags: 0x00 };
+    // n ‖ flags — a custody-generation board with no PIN by default; the
+    // caps carry CAP_TOUCH_POLICY (0x0010, US-1748) too.
+    this.info = { appletVer: [0x00, 0x02], caps: 0x001f, maxPlaintext: 0x0700, nIdentities: this.keys.length, flags: 0x00 };
   }
 
   setGrants(on) {
@@ -118,6 +122,25 @@ export class MockDevice {
       }
       case NOSTR_CMD.LOCK: {
         this.unlocked = false;
+        // US-1748 — LOCK clears the touch bypass with the session.
+        this.touchBypass = false;
+        return { sw: SW.OK, data: new Uint8Array(0) };
+      }
+      case NOSTR_CMD.SET_TOUCH_POLICY: {
+        // US-1748 — the envelope idx rides P1: 0 re-enables the touch
+        // (friction-free, every state), 1 disables it for the signing arms
+        // behind the applet's refusal ladder — a payload present (6a80),
+        // no PIN (6a82), session closed (0x6982), and the consent press
+        // denied or never given (0x6985, modelled here by the grants flag).
+        if (arg.length > 0) return { sw: SW.WRONG_DATA, data: new Uint8Array(0) };
+        if (idx === 0) {
+          this.touchBypass = false;
+          return { sw: SW.OK, data: new Uint8Array(0) };
+        }
+        if (this.pin == null) return { sw: 0x6a82, data: new Uint8Array(0) };
+        if (!this.unlocked) return { sw: 0x6982, data: new Uint8Array(0) };
+        if (!this._grants) return { sw: SW.CONDITIONS_NOT_SATISFIED, data: new Uint8Array(0) };
+        this.touchBypass = true;
         return { sw: SW.OK, data: new Uint8Array(0) };
       }
       case NOSTR_CMD.IMPORT_KEY: {
@@ -154,10 +177,11 @@ export class MockDevice {
       case NOSTR_CMD.PING: {
         // INS_GET_INFO: applet_ver(2) ‖ caps(2) ‖ max_plaintext(2) ‖
         // n(1) ‖ flags(1); flags mirrors the PIN state (bit0 set, bit1 the
-        // unlocked session) and bit2 the pending migration (US-1714 —
-        // pending implies the PIN is set, so the mock requires both).
+        // unlocked session), bit2 the pending migration (US-1714 — pending
+        // implies the PIN is set, so the mock requires both), and bit3 the
+        // live touch bypass (US-1748).
         const i = this.info;
-        const flags = (i.flags & ~0x03) | (this.pin != null ? 0x01 : 0x00) | (this.unlocked ? 0x02 : 0x00) | (this.pin != null && this.ceremonyPending ? 0x04 : 0x00);
+        const flags = (i.flags & ~0x03) | (this.pin != null ? 0x01 : 0x00) | (this.unlocked ? 0x02 : 0x00) | (this.pin != null && this.ceremonyPending ? 0x04 : 0x00) | (this.touchBypass ? 0x08 : 0x00);
         const data = new Uint8Array(8);
         data[0] = i.appletVer[0];
         data[1] = i.appletVer[1];
