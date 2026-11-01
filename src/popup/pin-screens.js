@@ -84,12 +84,27 @@ export function manageModel(state) {
  *  Checked = the touch is required for signing (the default and the safe
  *  reading on anything the firmware does not say otherwise — an old board
  *  or a missing state object renders the box checked and disabled, never
- *  as if a bypass were live). */
+ *  as if a bypass were live). Changing the policy is a custody decision:
+ *  the board refuses the disable leg without an open session (0x6982), so
+ *  a locked one is read-only with the live policy still showing. */
 export function touchPolicyModel(state) {
   if (!state || !state.touchSupported) {
-    return { supported: false, requireTouch: true, note: 'firmware does not support touch bypass' };
+    return {
+      supported: false,
+      unlocked: false,
+      requireTouch: true,
+      note: 'firmware does not support touch bypass',
+    };
   }
-  return { supported: true, requireTouch: !state.touchBypass, note: '' };
+  if (!state.unlocked) {
+    return {
+      supported: true,
+      unlocked: false,
+      requireTouch: !state.touchBypass,
+      note: 'verify the PIN to change this',
+    };
+  }
+  return { supported: true, unlocked: true, requireTouch: !state.touchBypass, note: '' };
 }
 
 /** US-1706 — the set screen's static copy. */

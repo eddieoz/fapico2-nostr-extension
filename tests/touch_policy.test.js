@@ -20,7 +20,7 @@ import { createPinFlow, parseInfoBody, parsePinState } from '../src/worker/pin_f
 import { describeSw } from '../src/worker/error-map.js';
 import { createHandlers } from '../src/worker/handlers.js';
 import { createDeviceOwner } from '../src/worker/device.js';
-import { TRUSTED_ONLY_METHODS, PAGE_ALLOWED_METHODS } from '../src/worker/dispatch.js';
+import { TRUSTED_ONLY_METHODS, PAGE_ALLOWED_METHODS, createDispatch } from '../src/worker/dispatch.js';
 import { MockDevice } from './mock_device.js';
 import { touchPolicyModel, manageModel } from '../src/popup/pin-screens.js';
 
@@ -104,27 +104,44 @@ test('US-1748 the touch facts ride every parsePinState branch, unsupported inclu
 test('US-1748 touchPolicyModel: an unsupported board renders checked, disabled, and says why', () => {
   assert.deepEqual(touchPolicyModel(null), {
     supported: false,
+    unlocked: false,
     requireTouch: true,
     note: 'firmware does not support touch bypass',
   });
   assert.deepEqual(touchPolicyModel({ supported: true, touchSupported: false }), {
     supported: false,
+    unlocked: false,
     requireTouch: true,
     note: 'firmware does not support touch bypass',
   });
 });
 
-test('US-1748 touchPolicyModel: supported boards render the live policy', () => {
-  assert.deepEqual(touchPolicyModel({ touchSupported: true, touchBypass: false }), {
+test('US-1748 touchPolicyModel: an open session renders the live policy, editable', () => {
+  assert.deepEqual(touchPolicyModel({ touchSupported: true, touchBypass: false, unlocked: true }), {
     supported: true,
+    unlocked: true,
     requireTouch: true,
     note: '',
   });
-  assert.deepEqual(touchPolicyModel({ touchSupported: true, touchBypass: true }), {
+  assert.deepEqual(touchPolicyModel({ touchSupported: true, touchBypass: true, unlocked: true }), {
     supported: true,
+    unlocked: true,
     requireTouch: false,
     note: '',
   });
+});
+
+test('US-1748 touchPolicyModel: a locked session is read-only but still shows the live policy', () => {
+  // The board refuses the disable leg without an open session (0x6982) —
+  // the model gates the toggle on the session instead of letting the user
+  // walk into that refusal.
+  const locked = touchPolicyModel({ touchSupported: true, touchBypass: false, unlocked: false });
+  assert.equal(locked.supported, true);
+  assert.equal(locked.unlocked, false);
+  assert.equal(locked.requireTouch, true, 'the live policy still renders while locked');
+  assert.match(locked.note, /verify the PIN/);
+  const bypassed = touchPolicyModel({ touchSupported: true, touchBypass: true, unlocked: false });
+  assert.equal(bypassed.requireTouch, false, 'a live bypass is shown honestly while locked');
 });
 
 test('US-1748 manageModel carries the touch model so the manage screen has one render path', () => {
@@ -232,6 +249,24 @@ test('US-1748 a non-boolean disable is a typed refusal before any device frame',
   assert.equal(mock.calls.length, before, 'the shape refusal never reached the device');
 });
 
+test('US-1748 the port frame shape — args [true], not [[true]] — disables the policy', async () => {
+  // Regression: the popup wrapped the flag in an array, but port-client's
+  // call() is variadic — the worker received [[true]] and answered
+  // BAD_TOUCH_POLICY. Route the exact frame the port carries when the
+  // checkbox is unchecked (disable = true).
+  const { handlers, mock } = rig();
+  await unlockedBoard(handlers, mock);
+  const route = createDispatch(handlers, { extensionId: 'test' });
+  const reply = await route(
+    { id: 'c0', method: 'touch_policy_set', args: [true] },
+    { url: 'chrome-extension://test/popup.html' },
+    null,
+  );
+  assert.equal(reply.error, undefined, `the port shape must not refuse: ${reply.error?.message ?? ''}`);
+  assert.equal(mock.touchBypass, true, 'the bypass went live');
+  assert.equal(reply.result.info.flags & 0x08, 0x08, 'the fresh advertisement names the new policy');
+});
+
 test('US-1748 touch_policy_set is trusted-only: a tab sender is forbidden-method', async () => {
   assert.ok(TRUSTED_ONLY_METHODS.has('touch_policy_set'));
   assert.ok(!PAGE_ALLOWED_METHODS.has('touch_policy_set'));
@@ -242,7 +277,11 @@ test('US-1748 touch_policy_set is trusted-only: a tab sender is forbidden-method
 test('US-1748 the manage screen renders the checkbox from m.touch and names an unsupported board', async () => {
   const src = await read('src/popup/popup.js');
   assert.match(src, /box\.checked = m\.touch\.requireTouch/);
-  assert.match(src, /box\.disabled = !m\.touch\.supported/);
+  assert.match(
+    src,
+    /box\.disabled = !m\.touch\.supported \|\| !m\.touch\.unlocked/,
+    'the toggle is gated on the session, not just the firmware cap',
+  );
   assert.match(src, /note\.textContent = m\.touch\.note/);
   const html = await read('src/popup/popup.html');
   assert.ok(html.includes('id="pin-manage-touch-row"'), 'the checkbox row exists');
@@ -256,7 +295,8 @@ test('US-1748 a refusal re-renders from pinFlow — the checkbox snaps back, the
   const handler = src.match(/\$\('pin-manage-touch'\)\.addEventListener\('change'[\s\S]*?\n\}\);/);
   assert.ok(handler, 'the change listener exists');
   const body = handler[0];
-  assert.match(body, /api\.call\('touch_policy_set', \[disable\]\)/);
+  assert.match(body, /api\.call\('touch_policy_set', disable\)/,
+    'the flag rides the variadic call bare — a wrapped array delivered [[false]] and the worker refused the shape');
   assert.match(body, /pinFlow\.touchInfoRefreshed\(r\.info\)/, 'success refreshes the advertisement in place');
   assert.match(body, /deviceCallNotice\(err\)/, 'the refusal names its typed sentence');
   const finallyIdx = body.indexOf('finally');
