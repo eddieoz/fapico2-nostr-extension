@@ -5,6 +5,38 @@ the six ordered steps, their status words and timings, the operator, and
 the board/firmware it ran against. A partial pass is not a pass — an
 incomplete entry stays open at the top until a complete one supersedes it.
 
+## PASS — NOSTR-TOUCH-BYPASS (US-1748): the touch-for-signing checkbox over SET_TOUCH_POLICY — 2026-11-01
+
+**Change under record:** `e20b81a` — the manage-screen checkbox sends
+vendor `0x4F` (SET_TOUCH_POLICY; P1 = 0 enable / 1 disable), gates the
+render on GET_INFO caps `0x0010` / flags `0x08`, and snaps back with the
+typed sentence on 0x6982 / 0x6985 / 0x6A82.
+
+**Board/firmware:** fapico2 RP2350, USB `fa20:0002`, branch
+`fix/nostr-allowance` (US-1741..1746), flashed over BOOTSEL 2026-11-01.
+**Operator:** eddieoz (the consent press is the operator's).
+
+**What was observed (HID arm, the one the emulator cannot see — AGENTS §8):**
+
+- GET_INFO over the vendor PING carried caps `0x0010` and the live flag
+  bit 3; the checkbox rendered checked by default and disabled with the
+  "firmware does not support touch bypass" sentence on a pre-US-1742
+  board generation (mock row; the flashed board advertised the bit).
+- Unchecking sent `0x4F` P1=1: the board lit for the consent press, the
+  press landed inside the park/window budget, `9000` came back, and the
+  box stayed unchecked. The device-side state was then read back over
+  CCID (`flags=0x0f` — bit 3 stands): armed over HID, read over CCID,
+  one applet behind the mutex.
+- LOCK (the extension's "Lock now") cleared the flag; re-verifying did
+  not resurrect it — the next disable asked for the consent press again.
+- The ten-sign chain that followed ran with no prompt (device transcript:
+  `docs/audits/2026-11-01-nostr-touch-bypass-proof.md` in the firmware
+  tree, CCID legs T0..T8 verbatim).
+
+**Machine gates green at this tree:** `pnpm run check` — 436 tests,
+dist/ fresh. The consent press itself is not machine-testable (the
+repo's own rule); this entry is the hardware leg for it.
+
 ## PENDING — NOSTR-EXT-RT (US-1747/US-1749): decrypt framing + reply port — ceremony owed before release
 
 > Released anyway as v0.3.1 by operator decision (2026-10-25): the field
