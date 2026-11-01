@@ -297,6 +297,9 @@ test('US-1748 a refusal re-renders from pinFlow — the checkbox snaps back, the
   const body = handler[0];
   assert.match(body, /api\.call\('touch_policy_set', disable\)/,
     'the flag rides the variadic call bare — a wrapped array delivered [[false]] and the worker refused the shape');
+  assert.match(body, /if \(disable\) touch\(true/,
+    'the disable leg arms the touch bar — the board is waiting for the consent press and the wait must be legible');
+  assert.match(body, /touch\(false\)/, 'the bar clears on every path, refusal included');
   assert.match(body, /pinFlow\.touchInfoRefreshed\(r\.info\)/, 'success refreshes the advertisement in place');
   assert.match(body, /deviceCallNotice\(err\)/, 'the refusal names its typed sentence');
   const finallyIdx = body.indexOf('finally');
@@ -327,4 +330,19 @@ test('US-1748 touchInfoRefreshed refreshes the state in place — pending and su
   assert.equal(v.ui, 'locked', 'the surface did not move');
   assert.deepEqual(flow.pending, { method: 'sign_event', args: [{}] }, 'the pending op survived');
   assert.equal(v.state.touchBypass, true, 'the advertisement moved');
+});
+
+test('US-1748 the checkbox unlocks in place after a verified PIN — no popup reopen', () => {
+  // The board-run finding: verifyOk kept the pre-verify state, so the
+  // checkbox stayed read-only until the popup was reopened. The popup's
+  // order is verifyOk then touchInfoRefreshed (the answer's fresh read-back).
+  const flow = createPinFlow();
+  flow.connect({ caps: 0x001f, flags: 0x01 }); // PIN set, session closed
+  assert.equal(touchPolicyModel(flow.view.state).unlocked, false, 'locked before the verify');
+  flow.verifyOk();
+  flow.touchInfoRefreshed({ caps: 0x001f, flags: 0x03 }); // FLAG_SESSION_UNLOCKED live
+  const m = manageModel(flow.view.state);
+  assert.equal(m.touch.unlocked, true, 'the gate lifted with the fresh advertisement');
+  assert.equal(m.touch.requireTouch, true);
+  assert.equal(m.touch.note, '', 'the read-only note is gone');
 });

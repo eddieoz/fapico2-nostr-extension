@@ -246,7 +246,12 @@ export function createHandlers({
     // --- PIN custody (US-1705) — touch-free: the PIN is the consent ----
     verify_pin: async ([pin]) => {
       await runOk(NOSTR_CMD.VERIFY_PIN, 0, pinBytes(pin));
-      return {};
+      // The advertisement moved (FLAG_SESSION_UNLOCKED is live): a forced
+      // GET_INFO rides the answer, so the popup's render never relies on
+      // what the board said before the verify — the lock indicator and the
+      // touch checkbox gate on this state (the touch_policy_set precedent).
+      const res = await device.ping({ force: true });
+      return { info: parseInfoBody(res.data) };
     },
 
     set_pin: async ([pin]) => {

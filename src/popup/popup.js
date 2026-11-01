@@ -345,8 +345,9 @@ $('pin-verify-form').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   if (pinFlow.view.ui === 'locked-out') return; // no attempt can succeed
   const input = $('pin-verify-input');
+  let r;
   try {
-    await api.call('verify_pin', input.value);
+    r = await api.call('verify_pin', input.value);
   } catch (verr) {
     pinFlow.verifySw(verr.sw); // 63Cn → attempts; 63C0 → locked-out; else error view
     renderPinVerifyScreen();
@@ -354,6 +355,10 @@ $('pin-verify-form').addEventListener('submit', async (ev) => {
     return; // stay on the dialog for the remaining attempts
   }
   pinFlow.verifyOk();
+  // The fresh advertisement rides the verify answer (US-1748 board run):
+  // without it the state still said locked and the touch checkbox stayed
+  // read-only until the popup was reopened.
+  pinFlow.touchInfoRefreshed(r.info);
   input.value = '';
   renderPinRow();
   renderLockIndicator();
@@ -425,6 +430,10 @@ $('pin-manage-touch').addEventListener('change', async (ev) => {
   const box = ev.target;
   const disable = !box.checked;
   box.disabled = true;
+  // The disable leg arms a consent press on the board — the wait is real
+  // and must be legible: the same touch bar the gated ops use, naming the
+  // ceremony. The enable leg is friction-free and stays silent.
+  if (disable) touch(true, 'touch the board to confirm — the press is the consent');
   try {
     // `call` is variadic — the args ARE the list. Wrapping the flag in an
     // array delivered `[[false]]` and the worker's boolean check refused it.
@@ -433,6 +442,7 @@ $('pin-manage-touch').addEventListener('change', async (ev) => {
   } catch (err) {
     deviceCallNotice(err);
   } finally {
+    touch(false);
     renderPinManage();
   }
 });

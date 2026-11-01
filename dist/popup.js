@@ -7642,8 +7642,9 @@
     ev.preventDefault();
     if (pinFlow.view.ui === "locked-out") return;
     const input = $("pin-verify-input");
+    let r;
     try {
-      await api.call("verify_pin", input.value);
+      r = await api.call("verify_pin", input.value);
     } catch (verr) {
       pinFlow.verifySw(verr.sw);
       renderPinVerifyScreen();
@@ -7651,6 +7652,7 @@
       return;
     }
     pinFlow.verifyOk();
+    pinFlow.touchInfoRefreshed(r.info);
     input.value = "";
     renderPinRow();
     renderLockIndicator();
@@ -7707,12 +7709,14 @@
     const box = ev.target;
     const disable = !box.checked;
     box.disabled = true;
+    if (disable) touch(true, "touch the board to confirm \u2014 the press is the consent");
     try {
       const r = await api.call("touch_policy_set", disable);
       pinFlow.touchInfoRefreshed(r.info);
     } catch (err) {
       deviceCallNotice(err);
     } finally {
+      touch(false);
       renderPinManage();
     }
   });
