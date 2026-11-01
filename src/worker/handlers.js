@@ -324,8 +324,12 @@ export function createHandlers({
       // 1 disables it for the signing arms.
       await runOk(NOSTR_CMD.SET_TOUCH_POLICY, disable ? 1 : 0, new Uint8Array(0));
       // The advertisement moved: a fresh GET_INFO so the popup's render
-      // never relies on what the board said before the change.
-      const res = await device.ping();
+      // never relies on what the board said before the change. Forced —
+      // this is the user-initiated read of a user-initiated toggle, and an
+      // unforced ping inside the 1 s health-check window would throw AFTER
+      // the device already changed, leaving the checkbox rendering the
+      // stale policy (the pair_device precedent).
+      const res = await device.ping({ force: true });
       return { info: parseInfoBody(res.data) };
     },
 
