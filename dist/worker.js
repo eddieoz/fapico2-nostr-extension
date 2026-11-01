@@ -665,7 +665,8 @@
         }
       },
       /** Touch-free PING (0x40), rate-limited to one probe per second —
-       *  except user-initiated probes (pair_device), which pass force. */
+       *  except user-initiated probes (pair_device, the touch-policy
+       *  read-back), which pass force. */
       async ping({ force = false } = {}) {
         const since = now2() - lastPingAt;
         if (!force && since < 1e3) throw Object.assign(new Error("health check rate-limited \u2014 retry in a second"), { code: "RATE_LIMITED", name: "RateLimitError" });
@@ -7991,7 +7992,7 @@
           throw new SignerError("BAD_TOUCH_POLICY", "the touch-policy flag must be true or false");
         }
         await runOk(NOSTR_CMD.SET_TOUCH_POLICY, disable ? 1 : 0, new Uint8Array(0));
-        const res = await device.ping();
+        const res = await device.ping({ force: true });
         return { info: parseInfoBody(res.data) };
       },
       get_grants: async () => listGrants(),
