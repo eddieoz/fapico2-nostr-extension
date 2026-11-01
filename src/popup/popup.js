@@ -391,7 +391,9 @@ function renderPinManage() {
   const box = $('pin-manage-touch');
   const note = $('pin-manage-touch-note');
   box.checked = m.touch.requireTouch;
-  box.disabled = !m.touch.supported;
+  // US-1748 — the toggle is a custody change: the board refuses the disable
+  // leg without an open session, so a locked one renders it read-only.
+  box.disabled = !m.touch.supported || !m.touch.unlocked;
   note.textContent = m.touch.note;
   note.hidden = !m.touch.note;
 }
@@ -424,7 +426,9 @@ $('pin-manage-touch').addEventListener('change', async (ev) => {
   const disable = !box.checked;
   box.disabled = true;
   try {
-    const r = await api.call('touch_policy_set', [disable]);
+    // `call` is variadic — the args ARE the list. Wrapping the flag in an
+    // array delivered `[[false]]` and the worker's boolean check refused it.
+    const r = await api.call('touch_policy_set', disable);
     pinFlow.touchInfoRefreshed(r.info);
   } catch (err) {
     deviceCallNotice(err);

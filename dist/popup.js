@@ -7357,9 +7357,22 @@
   }
   function touchPolicyModel(state2) {
     if (!state2 || !state2.touchSupported) {
-      return { supported: false, requireTouch: true, note: "firmware does not support touch bypass" };
+      return {
+        supported: false,
+        unlocked: false,
+        requireTouch: true,
+        note: "firmware does not support touch bypass"
+      };
     }
-    return { supported: true, requireTouch: !state2.touchBypass, note: "" };
+    if (!state2.unlocked) {
+      return {
+        supported: true,
+        unlocked: false,
+        requireTouch: !state2.touchBypass,
+        note: "verify the PIN to change this"
+      };
+    }
+    return { supported: true, unlocked: true, requireTouch: !state2.touchBypass, note: "" };
   }
   function setModel() {
     return {
@@ -7668,7 +7681,7 @@
     const box = $("pin-manage-touch");
     const note = $("pin-manage-touch-note");
     box.checked = m.touch.requireTouch;
-    box.disabled = !m.touch.supported;
+    box.disabled = !m.touch.supported || !m.touch.unlocked;
     note.textContent = m.touch.note;
     note.hidden = !m.touch.note;
   }
@@ -7695,7 +7708,7 @@
     const disable = !box.checked;
     box.disabled = true;
     try {
-      const r = await api.call("touch_policy_set", [disable]);
+      const r = await api.call("touch_policy_set", disable);
       pinFlow.touchInfoRefreshed(r.info);
     } catch (err) {
       deviceCallNotice(err);
