@@ -308,3 +308,13 @@ test('US-1846 the touch-policy toggle re-reads the ledger — arming moves the b
   assert.ok(handler, 'the change listener exists');
   assert.match(handler[0], /refreshAudit\(\)/, 'a policy change refreshes the accounting in place');
 });
+
+test('US-1846 the timestamp renders as device uptime, never as wall clock', async () => {
+  const { formatAuditTime } = await import('../src/popup/pin-screens.js');
+  // The device's ts_ms is monotonic uptime (apps/nostr reads its injected
+  // clock) — a Date() rendering would state a wrong local time.
+  assert.equal(formatAuditTime(0), 't+00:00');
+  assert.equal(formatAuditTime(65_000), 't+01:05');
+  assert.equal(formatAuditTime(3_723_000), 't+1:02:03', 'past an hour the hours show');
+  assert.equal(formatAuditTime(-1), '', 'a negative is nonsense and renders as nothing');
+});
