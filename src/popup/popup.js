@@ -34,6 +34,7 @@ import {
   changeModel,
   validatePin,
   validatePinChange,
+  auditModel,
 } from './pin-screens.js';
 
 const api = createPortClient();
@@ -401,6 +402,45 @@ function renderPinManage() {
   box.disabled = !m.touch.supported || !m.touch.unlocked;
   note.textContent = m.touch.note;
   note.hidden = !m.touch.note;
+  // US-1846 — the bypass ledger rides the same screen: opening it (and every
+  // re-render) re-reads the accounting so the budget line is fresh BEFORE the
+  // user relies on it.
+  refreshAudit();
+}
+
+/** US-1846 — fetch and render the bypass ledger. Gated on the board's
+ *  CAP_BYPASS_ACCOUNTING advertisement; every outcome is a neutral state —
+ *  a failed read hides the block rather than alarming, and a closed session
+ *  renders one quiet line pointing at the verify, never an error. The user
+ *  cannot see the board's LED from the browser, so this block is the only
+ *  place the bypass state is visible before a signing op finds out. */
+async function refreshAudit() {
+  const block = $('pin-manage-audit');
+  const status = $('pin-manage-audit-status');
+  const list = $('pin-manage-audit-list');
+  if (!pinFlow.view.state?.auditSupported) {
+    block.hidden = true;
+    return;
+  }
+  let audit;
+  try {
+    audit = await api.call('get_audit');
+  } catch {
+    block.hidden = true;
+    return;
+  }
+  const m = auditModel(audit);
+  block.hidden = !m.show;
+  if (!m.show) return;
+  status.textContent = m.status;
+  list.innerHTML = m.empty
+    ? `<div class="empty">${escapeHtml(m.emptyLine)}</div>`
+    : m.rows.map((r) => `
+      <div class="audit-row">
+        <span class="audit-op">${escapeHtml(r.op)}</span>
+        <span class="audit-meta">slot ${r.idx} — ${escapeHtml(r.time)}</span>
+        <span class="audit-digest" title="request digest">${escapeHtml(r.digest)}</span>
+      </div>`).join('');
 }
 
 $('pin-manage-verify').addEventListener('click', () => openPinVerify());
@@ -444,6 +484,7 @@ $('pin-manage-touch').addEventListener('change', async (ev) => {
   } finally {
     touch(false);
     renderPinManage();
+    refreshAudit(); // US-1846 — arming or clearing the bypass moves the budget line in place
   }
 });
 $('pin-manage-back').addEventListener('click', () => show('keys'));

@@ -130,7 +130,20 @@ test('US-1690 src/core is byte-identical to the OpenXrypt d431b00 originals exce
         ],
       },
       {
-        at: 78, // after the original SW's STORE_FAULT row (60, +7 from the NOSTR_CMD insertion, +4 from the ceremony verb, +7 from the touch-policy verb)
+        at: 68, // after the touch-policy verb (61, +7)
+        reason: 'US-1846 — the bypass-ledger read on the vendor dialect',
+        lines: [
+          '  // US-1846 — the bypass ledger read. P1=P2=0, no payload; the answer is',
+          '  // budget(1) ‖ n(1) ‖ n × { op(1), idx(1), ts_ms(4 BE), digest(16) } — the',
+          '  // operations the armed bypass exempted from the press, oldest first. A',
+          '  // PIN-set board with a closed session answers 0x6982, which for this verb',
+          '  // is the gate\'s own honest answer ("verify to see it"), never a fault —',
+          '  // the get_audit handler reads it as a typed state, not an error.',
+          '  GET_AUDIT: 0x50,',
+        ],
+      },
+      {
+        at: 85, // after the original SW's STORE_FAULT row (60, +7 from the NOSTR_CMD insertion, +4 from the ceremony verb, +7 from the touch-policy verb, +7 from the audit verb)
         reason: 'US-1705 — the PIN custody vocabulary (6982, 63c0)',
         lines: [
           '  // The PIN custody vocabulary (US-1691). PIN_NOT_SET shares 0x6a82 with',
@@ -143,7 +156,7 @@ test('US-1690 src/core is byte-identical to the OpenXrypt d431b00 originals exce
         ],
       },
       {
-        at: 85, // after the PIN vocabulary rows (78, +7)
+        at: 92, // after the PIN vocabulary rows (85, +7)
         reason: 'US-1714 — the custody-ceremony vocabulary (6f01, 6f02)',
         lines: [
           '  // The custody-ceremony vocabulary (US-1714): 0x6F01 is the sealed board',

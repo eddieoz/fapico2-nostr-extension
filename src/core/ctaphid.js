@@ -66,6 +66,13 @@ export const NOSTR_CMD = {
   // press never came; LOCK, a power cycle and a factory wipe clear the
   // bypass again.
   SET_TOUCH_POLICY: 0x4f,
+  // US-1846 — the bypass ledger read. P1=P2=0, no payload; the answer is
+  // budget(1) ‖ n(1) ‖ n × { op(1), idx(1), ts_ms(4 BE), digest(16) } — the
+  // operations the armed bypass exempted from the press, oldest first. A
+  // PIN-set board with a closed session answers 0x6982, which for this verb
+  // is the gate's own honest answer ("verify to see it"), never a fault —
+  // the get_audit handler reads it as a typed state, not an error.
+  GET_AUDIT: 0x50,
 };
 
 // The D13 status vocabulary, as it crosses the transport: the vendor CBOR

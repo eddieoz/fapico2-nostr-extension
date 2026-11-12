@@ -12,6 +12,7 @@
 // synchronous refusal word), and the byte layouts of §2.2.
 
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
+import { sha256 } from '@noble/hashes/sha2.js';
 import { schnorr } from '@noble/curves/secp256k1.js';
 import { base64 } from '@scure/base';
 import { getPublicKey, nip19, nip44 } from 'nostr-tools';
@@ -54,10 +55,17 @@ export class MockDevice {
     // The touch policy (US-1748): the bypass starts off — every signing
     // arm asks for the press until SET_TOUCH_POLICY idx 1 lands.
     this.touchBypass = false;
+    // The bypass ledger (US-1846): the remaining operations in the armed
+    // session (0 = not armed) and the ring of bypassed ops, oldest first.
+    // An advancing tick keeps the record timestamps strictly ordered.
+    this.bypassBudget = 0;
+    this.auditRecords = [];
+    this._auditTick = Date.now();
     // The GET_INFO body (US-1706): applet_ver ‖ caps ‖ max_plaintext ‖
     // n ‖ flags — a custody-generation board with no PIN by default; the
-    // caps carry CAP_TOUCH_POLICY (0x0010, US-1748) too.
-    this.info = { appletVer: [0x00, 0x02], caps: 0x001f, maxPlaintext: 0x0700, nIdentities: this.keys.length, flags: 0x00 };
+    // caps carry CAP_TOUCH_POLICY (0x0010, US-1748) and
+    // CAP_BYPASS_ACCOUNTING (0x0020, US-1846) too.
+    this.info = { appletVer: [0x00, 0x02], caps: 0x003f, maxPlaintext: 0x0700, nIdentities: this.keys.length, flags: 0x00 };
   }
 
   setGrants(on) {
@@ -124,6 +132,9 @@ export class MockDevice {
         this.unlocked = false;
         // US-1748 — LOCK clears the touch bypass with the session.
         this.touchBypass = false;
+        // US-1846 — and the ledger dies with the armed session (RAM-only).
+        this.bypassBudget = 0;
+        this.auditRecords = [];
         return { sw: SW.OK, data: new Uint8Array(0) };
       }
       case NOSTR_CMD.SET_TOUCH_POLICY: {
@@ -135,13 +146,42 @@ export class MockDevice {
         if (arg.length > 0) return { sw: SW.WRONG_DATA, data: new Uint8Array(0) };
         if (idx === 0) {
           this.touchBypass = false;
+          // US-1846 — the enable leg ends the armed session: budget 0,
+          // ring cleared (the session itself stays open).
+          this.bypassBudget = 0;
+          this.auditRecords = [];
           return { sw: SW.OK, data: new Uint8Array(0) };
         }
         if (this.pin == null) return { sw: 0x6a82, data: new Uint8Array(0) };
         if (!this.unlocked) return { sw: 0x6982, data: new Uint8Array(0) };
         if (!this._grants) return { sw: SW.CONDITIONS_NOT_SATISFIED, data: new Uint8Array(0) };
         this.touchBypass = true;
+        // US-1846 — arming loads the budget at full and starts a fresh ring.
+        this.bypassBudget = 32;
+        this.auditRecords = [];
         return { sw: SW.OK, data: new Uint8Array(0) };
+      }
+      case NOSTR_CMD.GET_AUDIT: {
+        // US-1846 — the ledger read: touch-free, no payload. A PIN-set board
+        // with a closed session answers 0x6982 (the gate, not a fault); a
+        // PIN-less board answers honestly empty. Body: budget(1) ‖ n(1) ‖
+        // n × { op(1) ‖ idx(1) ‖ ts_ms(4 BE) ‖ digest(16) }, oldest first.
+        if (arg.length > 0) return { sw: SW.WRONG_DATA, data: new Uint8Array(0) };
+        if (this.pin != null && !this.unlocked) return { sw: 0x6982, data: new Uint8Array(0) };
+        const body = new Uint8Array(2 + this.auditRecords.length * 22);
+        body[0] = this.bypassBudget;
+        body[1] = this.auditRecords.length;
+        this.auditRecords.forEach((r, i) => {
+          const off = 2 + i * 22;
+          body[off] = r.op;
+          body[off + 1] = r.idx;
+          body[off + 2] = (r.tsMs >>> 24) & 0xff;
+          body[off + 3] = (r.tsMs >>> 16) & 0xff;
+          body[off + 4] = (r.tsMs >>> 8) & 0xff;
+          body[off + 5] = r.tsMs & 0xff;
+          body.set(r.digest, off + 6);
+        });
+        return { sw: SW.OK, data: body };
       }
       case NOSTR_CMD.IMPORT_KEY: {
         // US-1717's round trip drives the import path: arg = scalar(32),
@@ -219,6 +259,7 @@ export class MockDevice {
         if (arg.length !== 32) return { sw: SW.WRONG_DATA, data: new Uint8Array(0) };
         const k = this._key(idx);
         const sig = schnorr.sign(arg, k.scalar);
+        this._recordBypass(0x00, idx, arg); // US-1846
         return { sw: SW.OK, data: concatBytes(k.pub, sig) };
       }
       case NOSTR_CMD.NIP44_ENCRYPT: {
@@ -232,6 +273,7 @@ export class MockDevice {
         const convKey = nip44.getConversationKey(k.scalar, bytesToHex(arg.subarray(0, 32)));
         const payload = base64.decode(nip44.v2.encrypt(
           new TextDecoder().decode(arg.subarray(32)), convKey));
+        this._recordBypass(0x01, idx, arg); // US-1846
         return { sw: SW.OK, data: payload };
       }
       case NOSTR_CMD.NIP44_DECRYPT: {
@@ -243,11 +285,27 @@ export class MockDevice {
         // the raw plaintext bytes. The seam contract is bytes — encode here
         // so both implementations agree.
         const pt = nip44.v2.decrypt(base64.encode(arg.subarray(32)), convKey);
+        this._recordBypass(0x02, idx, arg); // US-1846
         return { sw: SW.OK, data: new TextEncoder().encode(pt) };
       }
       default:
         return { sw: INS_NOT_SUPPORTED, data: new Uint8Array(0) };
     }
+  }
+
+  // US-1846 — the ledger entry a bypassed op leaves behind: the budget
+  // decrements and the record (op, idx, ms tick, SHA-256 of the request
+  // payload truncated to 16 bytes) joins the ring, oldest first.
+  _recordBypass(opByte, idx, arg) {
+    if (!this.unlocked || !this.touchBypass || this.bypassBudget <= 0) return;
+    this.bypassBudget -= 1;
+    this._auditTick += 1000;
+    this.auditRecords.push({
+      op: opByte,
+      idx,
+      tsMs: this._auditTick & 0xffffffff,
+      digest: sha256(arg).subarray(0, 16),
+    });
   }
 
   _key(idx) {
