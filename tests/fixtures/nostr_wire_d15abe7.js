@@ -12,10 +12,12 @@ export const SOURCE_COMMIT = 'd15abe7';
 // dialect (fapico2 feat/nostr-pin, through US-1702, nostr_wire.rs NOSTR_CMD
 // 0x4B..0x4D and the SW_PIN_SESSION_REQUIRED / SW_PIN_LOCKED vocabulary),
 // the custody-ceremony bytes (US-1714/US-1716, NOSTR_CMD 0x4E and the
-// SW_SEALED_UNAVAILABLE / SW_CEREMONY_NOT_NEEDED vocabulary), and the
+// SW_SEALED_UNAVAILABLE / SW_CEREMONY_NOT_NEEDED vocabulary), the
 // touch-policy verb (US-1748, fapico2 fix/nostr-allowance, NOSTR_CMD 0x4F —
 // the envelope idx rides P1: 0 re-enables the touch, 1 disables it for the
-// signing arms) — each an explicit, reviewed edit per the rule below.
+// signing arms), and the bypass-ledger read (US-1846, NOSTR_CMD 0x50 —
+// budget(1) ‖ n(1) ‖ n × { op(1), idx(1), ts_ms(4 BE), digest(16) } behind
+// the custody gate) — each an explicit, reviewed edit per the rule below.
 
 // firmware/src/nostr_wire.rs — NOSTR_CMD_* (u8).
 export const NOSTR_CMD = {
@@ -45,6 +47,12 @@ export const NOSTR_CMD = {
   // signing arms. The disable leg needs an open PIN session AND a physical
   // consent press; a payload on the wire is refused 0x6A80.
   SET_TOUCH_POLICY: 0x4f,
+  // The bypass ledger (US-1846). P1=P2=0, no payload; the answer is
+  // budget(1) ‖ n(1) ‖ n × { op(1), idx(1), ts_ms(4 BE), digest(16) }, the
+  // operations the armed bypass exempted from the press, oldest first.
+  // 0x6982 on a closed session is the gate's own answer — a typed state for
+  // the client, not a fault.
+  GET_AUDIT: 0x50,
 };
 
 // firmware/src/nostr_wire.rs — the D13 §2.2.0 vocabulary as it crosses the

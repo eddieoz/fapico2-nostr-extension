@@ -175,6 +175,14 @@
            Rendered from GET_INFO's CAP_TOUCH_POLICY / FLAG_TOUCH_BYPASS. -->
       <label class="row" id="pin-manage-touch-row"><input type="checkbox" id="pin-manage-touch" /><span>Require touch for signing</span></label>
       <p class="muted" id="pin-manage-touch-note" hidden></p>
+      <!-- US-1846 — the bypass ledger. Rendered only when the board
+           advertises CAP_BYPASS_ACCOUNTING; the line answers "will the board
+           ask me to touch?" in plain words, and the ring lists the operations
+           the armed bypass exempted from the press (newest first). -->
+      <div id="pin-manage-audit" hidden>
+        <p class="muted" id="pin-manage-audit-status" role="status"></p>
+        <div id="pin-manage-audit-list"></div>
+      </div>
       <div class="actions">
         <button id="pin-manage-back" class="ghost">Back</button>
       </div>

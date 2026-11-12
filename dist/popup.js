@@ -7194,6 +7194,7 @@
   // src/worker/pin_flow.js
   var CAP_PIN_MGMT = 4;
   var CAP_TOUCH_POLICY = 16;
+  var CAP_BYPASS_ACCOUNTING = 32;
   var FLAG_PIN_SET = 1;
   var FLAG_SESSION_UNLOCKED = 2;
   var FLAG_TOUCH_BYPASS = 8;
@@ -7205,11 +7206,12 @@
     const unlocked = (flags & FLAG_SESSION_UNLOCKED) !== 0;
     const touchSupported = (caps & CAP_TOUCH_POLICY) !== 0;
     const touchBypass = (flags & FLAG_TOUCH_BYPASS) !== 0;
+    const auditSupported = (caps & CAP_BYPASS_ACCOUNTING) !== 0;
     if (!supported) {
-      return { supported, pinSet, unlocked, touchSupported, touchBypass, ui: "unsupported" };
+      return { supported, pinSet, unlocked, touchSupported, touchBypass, auditSupported, ui: "unsupported" };
     }
     if (!pinSet) {
-      return { supported, pinSet, unlocked, touchSupported, touchBypass, ui: "offer" };
+      return { supported, pinSet, unlocked, touchSupported, touchBypass, auditSupported, ui: "offer" };
     }
     return {
       supported,
@@ -7217,6 +7219,7 @@
       unlocked,
       touchSupported,
       touchBypass,
+      auditSupported,
       ui: unlocked ? "ready" : "locked"
     };
   }
@@ -7373,6 +7376,41 @@
       };
     }
     return { supported: true, unlocked: true, requireTouch: !state2.touchBypass, note: "" };
+  }
+  var AUDIT_VISIBLE_ROWS = 8;
+  var AUDIT_OP_WORDS = {
+    sign: "signed",
+    nip44_enc: "encrypted",
+    nip44_dec: "decrypted"
+  };
+  function formatAuditTime(tsMs) {
+    const d = new Date(tsMs);
+    return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  }
+  function auditModel(audit) {
+    const hidden = { show: false, status: "", rows: [], empty: false, emptyLine: "" };
+    if (!audit || audit.supported !== true) return hidden;
+    if (audit.sessionClosed) {
+      return {
+        show: true,
+        status: "session closed \u2014 verify the PIN to see bypass activity",
+        rows: [],
+        empty: false,
+        emptyLine: ""
+      };
+    }
+    const budget = audit.budget ?? 0;
+    const status = budget > 0 ? `bypass armed \u2014 ${budget} operation${budget === 1 ? "" : "s"} left` : "bypass off \u2014 every signature asks for a touch";
+    const records = Array.isArray(audit.records) ? audit.records : [];
+    const rows = [...records].reverse().slice(0, AUDIT_VISIBLE_ROWS).map((r) => ({
+      op: AUDIT_OP_WORDS[r.op] ?? r.op,
+      idx: r.idx,
+      ts: r.tsMs,
+      time: formatAuditTime(r.tsMs),
+      digest: `${String(r.digestHex ?? "").slice(0, 8)}\u2026`
+    }));
+    const empty = records.length === 0;
+    return { show: true, status, rows, empty, emptyLine: empty ? "no bypassed operations yet" : "" };
   }
   function setModel() {
     return {
@@ -7686,6 +7724,33 @@
     box.disabled = !m.touch.supported || !m.touch.unlocked;
     note.textContent = m.touch.note;
     note.hidden = !m.touch.note;
+    refreshAudit();
+  }
+  async function refreshAudit() {
+    const block = $("pin-manage-audit");
+    const status = $("pin-manage-audit-status");
+    const list = $("pin-manage-audit-list");
+    if (!pinFlow.view.state?.auditSupported) {
+      block.hidden = true;
+      return;
+    }
+    let audit;
+    try {
+      audit = await api.call("get_audit");
+    } catch {
+      block.hidden = true;
+      return;
+    }
+    const m = auditModel(audit);
+    block.hidden = !m.show;
+    if (!m.show) return;
+    status.textContent = m.status;
+    list.innerHTML = m.empty ? `<div class="empty">${escapeHtml(m.emptyLine)}</div>` : m.rows.map((r) => `
+      <div class="audit-row">
+        <span class="audit-op">${escapeHtml(r.op)}</span>
+        <span class="audit-meta">slot ${r.idx} \u2014 ${escapeHtml(r.time)}</span>
+        <span class="audit-digest" title="request digest">${escapeHtml(r.digest)}</span>
+      </div>`).join("");
   }
   $("pin-manage-verify").addEventListener("click", () => openPinVerify());
   $("pin-manage-change").addEventListener("click", () => {
@@ -7718,6 +7783,7 @@
     } finally {
       touch(false);
       renderPinManage();
+      refreshAudit();
     }
   });
   $("pin-manage-back").addEventListener("click", () => show("keys"));

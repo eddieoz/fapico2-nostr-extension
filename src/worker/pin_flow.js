@@ -18,6 +18,10 @@ export const CAP_PIN_MGMT = 0x0004;
 /** US-1748 — SET_TOUCH_POLICY (0x4F) is served, unconditional on new
  *  firmware: the touch-for-signing policy can be read and rewritten. */
 export const CAP_TOUCH_POLICY = 0x0010;
+/** US-1846 — the bypass ledger (GET_AUDIT, 0x50) is served: the board
+ *  accounts for every operation the armed bypass exempted from the press,
+ *  and the popup can show the remaining operations and the ring. */
+export const CAP_BYPASS_ACCOUNTING = 0x0020;
 
 /** GET_INFO flags bits (apps/nostr FLAG_*, US-1700). */
 export const FLAG_PIN_SET = 0x01;
@@ -53,11 +57,14 @@ export function parsePinState(info) {
   // screen can render the checkbox whatever the custody surface says.
   const touchSupported = (caps & CAP_TOUCH_POLICY) !== 0;
   const touchBypass = (flags & FLAG_TOUCH_BYPASS) !== 0;
+  // US-1846 — the ledger capability rides every state, like the touch facts:
+  // the manage screen gates its bypass-accounting block on it.
+  const auditSupported = (caps & CAP_BYPASS_ACCOUNTING) !== 0;
   if (!supported) {
-    return { supported, pinSet, unlocked, touchSupported, touchBypass, ui: 'unsupported' };
+    return { supported, pinSet, unlocked, touchSupported, touchBypass, auditSupported, ui: 'unsupported' };
   }
   if (!pinSet) {
-    return { supported, pinSet, unlocked, touchSupported, touchBypass, ui: 'offer' };
+    return { supported, pinSet, unlocked, touchSupported, touchBypass, auditSupported, ui: 'offer' };
   }
   return {
     supported,
@@ -65,6 +72,7 @@ export function parsePinState(info) {
     unlocked,
     touchSupported,
     touchBypass,
+    auditSupported,
     ui: unlocked ? 'ready' : 'locked',
   };
 }

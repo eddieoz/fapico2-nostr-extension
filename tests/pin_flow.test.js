@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 
 import {
   CAP_PIN_MGMT,
+  CAP_BYPASS_ACCOUNTING,
   createPinFlow,
   parseInfoBody,
   parsePinState,
@@ -108,4 +109,14 @@ test('US-1706 the GET_INFO body parses: applet_ver, caps, flags, and the 7-byte 
   const old = parseInfoBody(new Uint8Array([0x00, 0x01, 0x00, 0x03, 0x07, 0x00, 0x02]));
   assert.equal(old.flags, 0, 'the v0.2.0 body has no flags byte; it defaults to none set');
   assert.equal(parsePinState(old).ui, 'unsupported', 'no CAP_PIN_MGMT bit — the old generation');
+});
+
+test('US-1846 parsePinState exposes auditSupported from CAP_BYPASS_ACCOUNTING on every branch', () => {
+  assert.equal(parsePinState({ caps: 0x003f, flags: 0x03 }).auditSupported, true, 'the ledger generation');
+  assert.equal(parsePinState({ caps: 0x001f, flags: 0x03 }).auditSupported, false, 'the US-1748 generation has no caps bit 5');
+  assert.equal(CAP_BYPASS_ACCOUNTING, 0x0020, 'caps bit 5, US-1846');
+  // The fact rides the unsupported branch too, so the UI layer can gate on it
+  // without a second parse.
+  const old = parsePinState({ caps: 0x0003, flags: 0x00 });
+  assert.equal(old.auditSupported, false);
 });

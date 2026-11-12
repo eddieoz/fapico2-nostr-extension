@@ -107,6 +107,61 @@ export function touchPolicyModel(state) {
   return { supported: true, unlocked: true, requireTouch: !state.touchBypass, note: '' };
 }
 
+/** US-1846 — the bypass ledger (GET_AUDIT), from the handler's typed
+ *  result. The popup is the user's only window on the bypass state — the
+ *  board's LED is not visible from a browser — so every state here is a
+ *  plain-words answer to "will the board ask me to touch?": armed with the
+ *  operations left, off quietly, or "verify the PIN" when the session is
+ *  closed. Neutral states never render as errors. `audit` is the get_audit
+ *  handler result, or null when nothing was fetched (no device, no
+ *  capability, failed read) — unsupported and unreadable both hide the
+ *  block. */
+export const AUDIT_VISIBLE_ROWS = 8; // the device keeps 16; the popup caps the list
+
+const AUDIT_OP_WORDS = {
+  sign: 'signed',
+  nip44_enc: 'encrypted',
+  nip44_dec: 'decrypted',
+};
+
+export function formatAuditTime(tsMs) {
+  const d = new Date(tsMs);
+  return Number.isNaN(d.getTime())
+    ? ''
+    : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+export function auditModel(audit) {
+  const hidden = { show: false, status: '', rows: [], empty: false, emptyLine: '' };
+  if (!audit || audit.supported !== true) return hidden;
+  if (audit.sessionClosed) {
+    return {
+      show: true,
+      status: 'session closed — verify the PIN to see bypass activity',
+      rows: [],
+      empty: false,
+      emptyLine: '',
+    };
+  }
+  const budget = audit.budget ?? 0;
+  const status = budget > 0
+    ? `bypass armed — ${budget} operation${budget === 1 ? '' : 's'} left`
+    : 'bypass off — every signature asks for a touch';
+  const records = Array.isArray(audit.records) ? audit.records : [];
+  const rows = [...records]
+    .reverse() // the device answers oldest first; the ledger reads newest first
+    .slice(0, AUDIT_VISIBLE_ROWS)
+    .map((r) => ({
+      op: AUDIT_OP_WORDS[r.op] ?? r.op,
+      idx: r.idx,
+      ts: r.tsMs,
+      time: formatAuditTime(r.tsMs),
+      digest: `${String(r.digestHex ?? '').slice(0, 8)}…`,
+    }));
+  const empty = records.length === 0;
+  return { show: true, status, rows, empty, emptyLine: empty ? 'no bypassed operations yet' : '' };
+}
+
 /** US-1706 — the set screen's static copy. */
 export function setModel() {
   return {

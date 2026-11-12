@@ -279,6 +279,51 @@ export function createHandlers({
       return {};
     },
 
+    // --- the bypass ledger (US-1846) — trusted-only: the accounting of what
+    // the armed bypass exempted from the press is custody information, not a
+    // page's. The gate answers 0x6982 on a PIN-set board with a closed
+    // session, and that is a LEGITIMATE answer here — the popup renders a
+    // neutral "verify to see it" line from it — so this handler reads
+    // device.run directly (the ceremony_start precedent) instead of runOk,
+    // which would throw on the gate's own word.
+    get_audit: async () => {
+      const { sw, data } = await device.run(NOSTR_CMD.GET_AUDIT, 0, new Uint8Array(0));
+      if (sw === SW.PIN_SESSION_REQUIRED) {
+        return { supported: true, budget: null, records: null, sessionClosed: true };
+      }
+      if (sw === SW.INS_NOT_SUPPORTED) {
+        // Pre-US-1846 firmware: the verb does not exist there. The popup
+        // gates on CAP_BYPASS_ACCOUNTING before calling, so this is the
+        // belt to the braces — a typed "not supported", never a throw.
+        return { supported: false, budget: null, records: null, sessionClosed: false };
+      }
+      if (sw !== SW.OK) throw new SwError('GET_AUDIT', sw);
+      if (data.length < 2) {
+        throw Object.assign(new Error('GET_AUDIT answered 9000 with a short body'), {
+          name: 'SignerError', code: 'DEVICE_REPLY_MALFORMED',
+        });
+      }
+      const budget = data[0];
+      const n = data[1];
+      if (data.length < 2 + n * 22) {
+        throw Object.assign(new Error('GET_AUDIT answered 9000 with a truncated record ring'), {
+          name: 'SignerError', code: 'DEVICE_REPLY_MALFORMED',
+        });
+      }
+      const OP_NAMES = { 0x00: 'sign', 0x01: 'nip44_enc', 0x02: 'nip44_dec' };
+      const records = [];
+      for (let i = 0; i < n; i++) {
+        const off = 2 + i * 22; // op(1) ‖ idx(1) ‖ ts_ms(4 BE) ‖ digest(16)
+        records.push({
+          op: OP_NAMES[data[off]] ?? 'unknown',
+          idx: data[off + 1],
+          tsMs: ((data[off + 2] << 24) | (data[off + 3] << 16) | (data[off + 4] << 8) | data[off + 5]) >>> 0,
+          digestHex: bytesToHex(data.subarray(off + 6, off + 22)),
+        });
+      }
+      return { supported: true, budget, records, sessionClosed: false };
+    },
+
     // --- the custody ceremony (US-1715/US-1716) — trusted-only: the
     // consent dialog is the consent, and it lives in the popup. The applet
     // is neither touch-gated nor session-gated, and the button is not

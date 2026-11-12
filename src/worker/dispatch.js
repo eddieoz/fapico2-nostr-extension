@@ -51,6 +51,10 @@ export const TRUSTED_ONLY_METHODS = new Set([
   // The touch-policy verb (US-1748) — rewriting the touch consent model is
   // a custody decision for the extension UI; a page never drives it.
   'touch_policy_set',
+  // The bypass ledger read (US-1846) — what the armed bypass exempted from
+  // the press is custody accounting for the extension UI; a page never
+  // drives it.
+  'get_audit',
 ]);
 
 /** The Flamingo sender gate, original implementation. */

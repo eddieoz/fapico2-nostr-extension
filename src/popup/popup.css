@@ -258,6 +258,30 @@ input[type='text'], input[type='password'], textarea {
   cursor: pointer;
 }
 
+/* US-1846 — the bypass ledger on the PIN manage screen: the status line is
+   the glanceable "will I be asked to touch?" answer; the rows are one line
+   per bypassed op (human op name, slot, local time, clipped digest),
+   newest first. Neutral states only — no error styling lives here. */
+#pin-manage-audit { margin-top: 10px; }
+#pin-manage-audit[hidden] { display: none; }
+#pin-manage-audit-list {
+  display: flex;
+  flex-direction: column;
+}
+.audit-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+  font: 11px/1.5 var(--mono);
+  color: var(--ink-dim);
+}
+.audit-row:last-child { border-bottom: none; }
+.audit-op { color: var(--ink); flex: none; }
+.audit-meta { flex: 1 1 auto; text-align: right; }
+.audit-digest { flex: none; color: var(--ink-dim); }
+
 /* US-1728 — eight slots on ONE row: never wrap, share the width evenly, so a
    360px popup never drops slot 7 onto a second line. */
 .slot-picker { display: flex; gap: 6px; flex-wrap: nowrap; margin: 8px 0; }
