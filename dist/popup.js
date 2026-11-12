@@ -7384,8 +7384,14 @@
     nip44_dec: "decrypted"
   };
   function formatAuditTime(tsMs) {
-    const d = new Date(tsMs);
-    return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    if (!Number.isFinite(tsMs) || tsMs < 0) return "";
+    const total = Math.floor(tsMs / 1e3);
+    const h = Math.floor(total / 3600);
+    const m = Math.floor(total % 3600 / 60);
+    const s = total % 60;
+    const mm = String(m).padStart(2, "0");
+    const ss = String(s).padStart(2, "0");
+    return h > 0 ? `t+${h}:${mm}:${ss}` : `t+${mm}:${ss}`;
   }
   function auditModel(audit) {
     const hidden = { show: false, status: "", rows: [], empty: false, emptyLine: "" };

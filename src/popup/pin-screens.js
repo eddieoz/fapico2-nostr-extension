@@ -124,11 +124,19 @@ const AUDIT_OP_WORDS = {
   nip44_dec: 'decrypted',
 };
 
+/** The device's ts_ms is **monotonic device uptime in milliseconds**
+ *  (apps/nostr reads its injected clock — device uptime, not epoch), so a
+ *  wall-clock rendering would state a wrong time. The honest display is the
+ *  uptime itself: `t+MM:SS` (or `t+H:MM:SS` past an hour). */
 export function formatAuditTime(tsMs) {
-  const d = new Date(tsMs);
-  return Number.isNaN(d.getTime())
-    ? ''
-    : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  if (!Number.isFinite(tsMs) || tsMs < 0) return '';
+  const total = Math.floor(tsMs / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const mm = String(m).padStart(2, '0');
+  const ss = String(s).padStart(2, '0');
+  return h > 0 ? `t+${h}:${mm}:${ss}` : `t+${mm}:${ss}`;
 }
 
 export function auditModel(audit) {
