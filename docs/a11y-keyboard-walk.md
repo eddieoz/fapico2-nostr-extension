@@ -1,5 +1,13 @@
 # US-1733 — the keyboard walk (a11y record)
 
+> **Supersession note (2026-11-13):** this walk predates the PIN manage
+> screen (US-1748) and the bypass surface (US-1851..1856 — the checkbox's
+> two state labels, the status line with its live countdown, the ledger).
+> The walk below is accurate for the tree it names; a re-walk covering the
+> manage screen is owed.
+
+
+
 The story's acceptance: "manual keyboard walk of all screens recorded in the
 PR." Recorded 2026-10-13 against `feat/nostr` `018ee84` (dist rebuilt), driven
 by real `Tab` key events through the real dist pages in a real Chrome

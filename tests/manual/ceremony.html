@@ -21,7 +21,7 @@
   <code>python3 -m http.server</code>) — the ordered steps block on failure:
 </p>
 <p>
-  init (capFlags 0x00, version 0.1.0) → generate key (touch) →
+  init (the applet version and caps the board advertises — 0.3 / 0x003F on current firmware) → generate key (touch) →
   <code>getPublicKey</code> → <code>signEvent</code> (touch, verified against
   nostr-tools) → <code>nip44</code> encrypt/decrypt round trip (touch) →
   delete key (touch, npub echo checked).

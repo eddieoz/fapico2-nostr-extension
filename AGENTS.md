@@ -3,8 +3,11 @@
 fapico2-nostr-extension is a Chrome MV3 extension whose `window.nostr`
 (NIP-07 + device NIP-44) is implemented by a fapico2 hardware board over
 WebHID. Keys never live in the browser; every device operation is consented
-by a physical touch that the firmware enforces. [README.md](README.md) is
-the full reference; this file is the operating manual.
+by a physical touch that the firmware enforces — with the one deliberate
+exception of the touch bypass, which the firmware itself gates behind an
+open PIN session and a physical consent press, and bounds (255 operations,
+10 minutes). [README.md](README.md) is the full reference; this file is the
+operating manual.
 
 ## Commands
 
@@ -38,11 +41,13 @@ Run `pnpm run check` before declaring any change done. It is what CI runs.
    `.superpowers/`, `.zcode/` are gitignored working documents (epics,
    stories, agent session state). Never commit them or their contents into
    other files.
-6. **Consent is never bypassable in the extension.** The device touch is
-   firmware-enforced; extension-side grant checks, the prompt flow, and the
-   serialization queue are load-bearing security and UX structure. Any
-   change that lets a request reach the device without its grant path is
-   wrong, even if tests pass.
+6. **The consent ceremony is never bypassable in the extension.** The
+   firmware enforces the consent press for arming the touch bypass and the
+   touch for everything else; extension-side grant checks, the prompt flow,
+   and the serialization queue are load-bearing security and UX structure.
+   Any change that lets a request reach the device without its grant path —
+   or that arms the bypass without the firmware's consent press — is wrong,
+   even if tests pass.
 
 ## Architecture map
 

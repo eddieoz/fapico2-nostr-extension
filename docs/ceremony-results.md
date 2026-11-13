@@ -5,6 +5,11 @@ the six ordered steps, their status words and timings, the operator, and
 the board/firmware it ran against. A partial pass is not a pass — an
 incomplete entry stays open at the top until a complete one supersedes it.
 
+> **Polarity note (2026-11-13):** checkbox polarity was inverted in
+> US-1852/1853 — checked = bypass active, arm-on-check. Entries below that
+> date describe the pre-US-1852 semantics (checked = touch required,
+> unchecking arms) as history; do not read them as the current UI.
+
 ## PASS (operator board run) — NOSTR-TOUCH-BYPASS follow-ups (US-1748): the four board-run wedges — 2026-11-01
 
 **Change under record:** `7509f96` + `9a1bf8f` — the fixes for what the
