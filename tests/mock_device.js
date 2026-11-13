@@ -160,8 +160,8 @@ export class MockDevice {
         if (!this._grants) return { sw: SW.CONDITIONS_NOT_SATISFIED, data: new Uint8Array(0) };
         this.touchBypass = true;
         // US-1846 — arming loads the budget at full and starts a fresh ring.
-        // US-1848 — the budget is 128, the owner's number.
-        this.bypassBudget = 128;
+        // US-1855 — the budget is 255, the 1-byte field's largest count.
+        this.bypassBudget = 255;
         // US-1849 — the sampled session age: the mock anchors it at 0 on
         // arm and a test moves it forward by writing `mock.bypassAgeMs`.
         this.bypassAgeMs = 0;
