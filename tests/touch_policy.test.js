@@ -274,9 +274,11 @@ test('US-1748 touch_policy_set is trusted-only: a tab sender is forbidden-method
 
 // --- the popup wiring (structural pins, no DOM — the pin_screens pattern) -------
 
-test('US-1748 the manage screen renders the checkbox from m.touch and names an unsupported board', async () => {
+test('US-1748 the manage screen renders the checkbox from the device word and names an unsupported board', async () => {
   const src = await read('src/popup/popup.js');
-  assert.match(src, /box\.checked = m\.touch\.requireTouch/);
+  // US-1852 — the render goes through renderTouchCheckbox: the device's
+  // fresh get_audit word first, the cached policy only until it speaks.
+  assert.match(src, /renderTouchCheckbox\(\)/);
   assert.match(
     src,
     /box\.disabled = !m\.touch\.supported \|\| !m\.touch\.unlocked/,
@@ -286,7 +288,8 @@ test('US-1748 the manage screen renders the checkbox from m.touch and names an u
   const html = await read('src/popup/popup.html');
   assert.ok(html.includes('id="pin-manage-touch-row"'), 'the checkbox row exists');
   assert.ok(html.includes('id="pin-manage-touch"'), 'the checkbox exists');
-  assert.ok(html.includes('Require touch for signing'), 'the label names what it does');
+  assert.ok(html.includes('Bypass active — signatures run without a touch'),
+    'the label names the state the checkbox shows (US-1852: checked = bypass active)');
   assert.ok(html.includes('id="pin-manage-touch-note"'), 'the note element exists');
 });
 
