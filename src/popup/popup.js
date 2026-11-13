@@ -35,6 +35,7 @@ import {
   validatePin,
   validatePinChange,
   auditModel,
+  armedStatusLine,
 } from './pin-screens.js';
 
 const api = createPortClient();
@@ -386,6 +387,9 @@ $('pin-verify-cancel').addEventListener('click', () => {
 
 // --- PIN manage (US-1707) ------------------------------------------------------------
 
+// US-1851 — the countdown's 1 s interval, while an armed session is live.
+let auditTick = null;
+
 function renderPinManage() {
   const m = manageModel(pinFlow.view.state);
   $('pin-manage-status').textContent = m.statusLine;
@@ -408,6 +412,33 @@ function renderPinManage() {
   refreshAudit();
 }
 
+/** US-1851 — the countdown tick. Between polls the status line advances on
+ *  the host clock (remaining = window − device age − host elapsed); when
+ *  the local count reaches zero the popup re-asks the device instead of
+ *  trusting the local zero — the device's expiry leg is the truth, and the
+ *  re-read flips the line the moment the session actually dies. */
+function startAuditTick(model) {
+  stopAuditTick();
+  if (!model.armed) return;
+  const fetchedAt = Date.now();
+  auditTick = setInterval(async () => {
+    const remaining = model.remainingMs - (Date.now() - fetchedAt);
+    if (remaining > 0) {
+      $('pin-manage-audit-status').textContent = armedStatusLine(model.budget, remaining);
+      return;
+    }
+    stopAuditTick();
+    await refreshAudit(); // the device's word beats the local zero
+  }, 1000);
+}
+
+function stopAuditTick() {
+  if (auditTick) {
+    clearInterval(auditTick);
+    auditTick = null;
+  }
+}
+
 /** US-1846 — fetch and render the bypass ledger. Gated on the board's
  *  CAP_BYPASS_ACCOUNTING advertisement; every outcome is a neutral state —
  *  a failed read hides the block rather than alarming, and a closed session
@@ -418,6 +449,7 @@ async function refreshAudit() {
   const block = $('pin-manage-audit');
   const status = $('pin-manage-audit-status');
   const list = $('pin-manage-audit-list');
+  stopAuditTick();
   if (!pinFlow.view.state?.auditSupported) {
     block.hidden = true;
     return;
@@ -433,6 +465,7 @@ async function refreshAudit() {
   block.hidden = !m.show;
   if (!m.show) return;
   status.textContent = m.status;
+  startAuditTick(m); // US-1851 — the countdown advances between polls
   list.innerHTML = m.empty
     ? `<div class="empty">${escapeHtml(m.emptyLine)}</div>`
     : m.rows.map((r) => `
@@ -461,11 +494,13 @@ $('pin-manage-lock').addEventListener('click', async () => {
   renderPinManage();
   notice('locked — signing asks for the PIN again after the board restarts', 'ok');
 });
-// US-1748 — flipping the checkbox rewrites the board's touch policy: the
-// disable leg needs the session AND a consent press on the board, so the
-// wait is real. Any refusal is noticed by sentence and the re-render snaps
-// the checkbox back from pinFlow's unchanged state — a refusal never
-// leaves the UI claiming a bypass the board does not carry.
+// US-1748/US-1852 — flipping the checkbox rewrites the board's touch
+// policy (checked = the bypass is active; unchecking it asks the board to
+// end the session, which needs a consent press): the disable leg needs the
+// session AND that press, so the wait is real. Any refusal is noticed by
+// sentence and the re-render snaps the checkbox back from the device's
+// fresh word — a refusal never leaves the UI claiming a bypass the board
+// does not carry.
 $('pin-manage-touch').addEventListener('change', async (ev) => {
   const box = ev.target;
   const disable = !box.checked;
@@ -487,7 +522,11 @@ $('pin-manage-touch').addEventListener('change', async (ev) => {
     refreshAudit(); // US-1846 — arming or clearing the bypass moves the budget line in place
   }
 });
-$('pin-manage-back').addEventListener('click', () => show('keys'));
+$('pin-manage-back').addEventListener('click', () => {
+  stopAuditTick(); // US-1851 — the countdown lives only while its screen does
+  show('keys');
+});
+
 
 // --- PIN change (US-1706) ------------------------------------------------------------
 
