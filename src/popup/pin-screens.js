@@ -81,12 +81,14 @@ export function manageModel(state) {
 }
 
 /** US-1748 — the touch-policy checkbox, from the parsed GET_INFO state.
- *  Checked = the touch is required for signing (the default and the safe
- *  reading on anything the firmware does not say otherwise — an old board
- *  or a missing state object renders the box checked and disabled, never
- *  as if a bypass were live). Changing the policy is a custody decision:
- *  the board refuses the disable leg without an open session (0x6982), so
- *  a locked one is read-only with the live policy still showing. */
+ *  **The device fact is `requireTouch`; the checkbox shows its inverse**
+ *  (US-1852/US-1853: checked = the bypass is active — signatures run
+ *  WITHOUT a touch). The fallback branch below returns `requireTouch` as
+ *  the device states it and the popup inverts it — do not "fix" the
+ *  inversion here: that polarity mistake is exactly what produced the
+ *  shipped blink bug. Changing the policy is a custody decision: the
+ *  board refuses the bypass leg without an open session (0x6982), so a
+ *  locked one is read-only with the live policy still showing. */
 export function touchPolicyModel(state) {
   if (!state || !state.touchSupported) {
     return {
@@ -124,15 +126,22 @@ export const AUDIT_VISIBLE_ROWS = 8; // the device keeps 16; the popup caps the 
  *  copy only renders it. */
 export const BYPASS_SESSION_MS = 600_000;
 
+/** The h/m/s decomposition both formatters share. They deliberately
+ *  diverge on presentation — the countdown pads minutes (`M:SS` reads as
+ *  a countdown), the uptime doesn't (`t+MM:SS`), and the uptime carries
+ *  the `t+` prefix — but never on the math. One decomposition; two
+ *  honest renderings. */
+function hms(ms) {
+  const total = Math.floor(ms / 1000);
+  return [Math.floor(total / 3600), Math.floor((total % 3600) / 60), total % 60];
+}
+
 /** US-1851 — the remaining session window as `M:SS` (`H:MM:SS` past an
  *  hour). A negative or nonsense input renders as nothing — callers clamp
  *  before they call; the guard is a belt, not the policy. */
 export function formatRemaining(ms) {
   if (!Number.isFinite(ms) || ms < 0) return '';
-  const total = Math.floor(ms / 1000);
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
+  const [h, m, s] = hms(ms);
   const mm = String(m).padStart(2, '0');
   const ss = String(s).padStart(2, '0');
   return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
@@ -162,10 +171,7 @@ const AUDIT_OP_WORDS = {
  *  uptime itself: `t+MM:SS` (or `t+H:MM:SS` past an hour). */
 export function formatAuditTime(tsMs) {
   if (!Number.isFinite(tsMs) || tsMs < 0) return '';
-  const total = Math.floor(tsMs / 1000);
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
+  const [h, m, s] = hms(tsMs);
   const mm = String(m).padStart(2, '0');
   const ss = String(s).padStart(2, '0');
   return h > 0 ? `t+${h}:${mm}:${ss}` : `t+${mm}:${ss}`;

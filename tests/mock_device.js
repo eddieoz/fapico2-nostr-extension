@@ -67,8 +67,11 @@ export class MockDevice {
     // The GET_INFO body (US-1706): applet_ver ‖ caps ‖ max_plaintext ‖
     // n ‖ flags — a custody-generation board with no PIN by default; the
     // caps carry CAP_TOUCH_POLICY (0x0010, US-1748) and
-    // CAP_BYPASS_ACCOUNTING (0x0020, US-1846) too.
-    this.info = { appletVer: [0x00, 0x02], caps: 0x003f, maxPlaintext: 0x0700, nIdentities: this.keys.length, flags: 0x00 };
+    // CAP_BYPASS_ACCOUNTING (0x0020, US-1846) too. US-1856 — the mock is
+    // a v0.3 board: the v0.3 GET_AUDIT body it serves needs the v0.3
+    // advertisement, or the popup's stale-firmware gate (US-1854) would
+    // hide the ledger from every device-level test.
+    this.info = { appletVer: [0x00, 0x03], caps: 0x003f, maxPlaintext: 0x0700, nIdentities: this.keys.length, flags: 0x00 };
   }
 
   setGrants(on) {

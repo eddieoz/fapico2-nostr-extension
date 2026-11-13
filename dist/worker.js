@@ -8035,15 +8035,15 @@
         throw new SwError("CEREMONY_START", sw);
       },
       // --- touch policy (US-1748) — trusted-only: rewriting the consent
-      // model is a custody decision, not a page's. The disable leg needs an
+      // model is a custody decision, not a page's. The bypass leg needs an
       // open PIN session AND a physical press on the board; the refusals
       // (6A82 no PIN, 0x6982 session closed, 0x6985 the press never came,
       // 6A86 bad P1) cross typed from the error map.
-      touch_policy_set: async ([disable]) => {
-        if (typeof disable !== "boolean") {
+      touch_policy_set: async ([bypass]) => {
+        if (typeof bypass !== "boolean") {
           throw new SignerError("BAD_TOUCH_POLICY", "the touch-policy flag must be true or false");
         }
-        await runOk(NOSTR_CMD.SET_TOUCH_POLICY, disable ? 1 : 0, new Uint8Array(0));
+        await runOk(NOSTR_CMD.SET_TOUCH_POLICY, bypass ? 1 : 0, new Uint8Array(0));
         const res = await device.ping({ force: true });
         return { info: parseInfoBody(res.data) };
       },
