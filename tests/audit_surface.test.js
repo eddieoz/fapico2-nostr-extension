@@ -106,14 +106,14 @@ test('US-1846 GET_AUDIT on a closed session answers 0x6982 — the gate, not a f
   assert.equal(res.sw, SW.PIN_SESSION_REQUIRED);
 });
 
-test('US-1848 arming the bypass loads the budget at 128; the records ring starts empty', async () => {
+test('US-1855 arming the bypass loads the budget at 255; the records ring starts empty', async () => {
   const mock = new MockDevice();
   mock.pin = '731742';
   mock.unlocked = true;
   await mock.vendor(NOSTR_CMD.SET_TOUCH_POLICY, 1, new Uint8Array(0));
   const res = await mock.vendor(NOSTR_CMD.GET_AUDIT, 0, new Uint8Array(0));
   assert.equal(res.sw, SW.OK);
-  assert.equal(res.data[0], 128, "the owner's number, not the first cut's 32");
+  assert.equal(res.data[0], 255, "the 1-byte budget field's largest count");
   assert.equal(res.data[1], 0);
   assert.equal(((res.data[2] << 24) | (res.data[3] << 16) | (res.data[4] << 8) | res.data[5]) >>> 0, 0,
     'a fresh arm samples age 0');
@@ -129,7 +129,7 @@ test('US-1846 a bypassed SIGN decrements the budget and lands in the ledger, old
   await mock.vendor(NOSTR_CMD.SIGN, 1, arg);
   const res = await mock.vendor(NOSTR_CMD.GET_AUDIT, 0, new Uint8Array(0));
   assert.equal(res.sw, SW.OK);
-  assert.equal(res.data[0], 126, 'two bypassed ops, two decrements of 128');
+  assert.equal(res.data[0], 253, 'two bypassed ops, two decrements of 255');
   assert.equal(res.data[1], 2);
   // Record shape: budget(1) ‖ n(1) ‖ age_ms(4) then op(1) ‖ idx(1) ‖
   // ts_ms(4 BE) ‖ digest(16) — 22 bytes per record from offset 6.
@@ -150,7 +150,7 @@ test('US-1846 NIP-44 arms land their own op tags in the ledger', async () => {
   const encArg = new Uint8Array([...peer, ...new Uint8Array(8).fill(0x11)]);
   await mock.vendor(NOSTR_CMD.NIP44_ENCRYPT, 0, encArg);
   const res = await mock.vendor(NOSTR_CMD.GET_AUDIT, 0, new Uint8Array(0));
-  assert.equal(res.data[0], 127);
+  assert.equal(res.data[0], 254);
   assert.equal(res.data[6], 0x01, 'OP_NIP44_ENC');
 });
 
@@ -177,7 +177,7 @@ test('US-1846 get_audit parses the body: budget, records, op words, digest hex',
   const r = await call(handlers, 'get_audit', []);
   assert.equal(r.supported, true);
   assert.equal(r.sessionClosed, false);
-  assert.equal(r.budget, 127);
+  assert.equal(r.budget, 254);
   assert.equal(typeof r.ageMs, 'number', 'US-1849 — the sampled age rides the parse');
   assert.equal(r.records.length, 1);
   const rec = r.records[0];
