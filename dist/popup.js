@@ -7378,6 +7378,22 @@
     return { supported: true, unlocked: true, requireTouch: !state2.touchBypass, note: "" };
   }
   var AUDIT_VISIBLE_ROWS = 8;
+  var BYPASS_SESSION_MS = 6e5;
+  function formatRemaining(ms) {
+    if (!Number.isFinite(ms) || ms < 0) return "";
+    const total = Math.floor(ms / 1e3);
+    const h = Math.floor(total / 3600);
+    const m = Math.floor(total % 3600 / 60);
+    const s = total % 60;
+    const mm = String(m).padStart(2, "0");
+    const ss = String(s).padStart(2, "0");
+    return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+  }
+  function armedStatusLine(budget, remainingMs) {
+    const left = `${budget} operation${budget === 1 ? "" : "s"} left`;
+    const exp = formatRemaining(remainingMs);
+    return exp ? `bypass armed \u2014 ${left} \xB7 expires in ${exp}` : `bypass armed \u2014 ${left}`;
+  }
   var AUDIT_OP_WORDS = {
     sign: "signed",
     nip44_enc: "encrypted",
@@ -7393,8 +7409,8 @@
     const ss = String(s).padStart(2, "0");
     return h > 0 ? `t+${h}:${mm}:${ss}` : `t+${mm}:${ss}`;
   }
-  function auditModel(audit) {
-    const hidden = { show: false, status: "", rows: [], empty: false, emptyLine: "" };
+  function auditModel(audit, elapsedMs = 0) {
+    const hidden = { show: false, status: "", rows: [], empty: false, emptyLine: "", armed: false, budget: 0, remainingMs: 0 };
     if (!audit || audit.supported !== true) return hidden;
     if (audit.sessionClosed) {
       return {
@@ -7402,11 +7418,17 @@
         status: "session closed \u2014 verify the PIN to see bypass activity",
         rows: [],
         empty: false,
-        emptyLine: ""
+        emptyLine: "",
+        armed: false,
+        budget: 0,
+        remainingMs: 0
       };
     }
     const budget = audit.budget ?? 0;
-    const status = budget > 0 ? `bypass armed \u2014 ${budget} operation${budget === 1 ? "" : "s"} left` : "bypass off \u2014 every signature asks for a touch";
+    const armed = budget > 0;
+    const ageMs = audit.ageMs ?? 0;
+    const remainingMs = armed ? Math.max(0, BYPASS_SESSION_MS - ageMs - elapsedMs) : 0;
+    const status = armed ? armedStatusLine(budget, remainingMs) : "bypass off \u2014 every signature asks for a touch";
     const records = Array.isArray(audit.records) ? audit.records : [];
     const rows = [...records].reverse().slice(0, AUDIT_VISIBLE_ROWS).map((r) => ({
       op: AUDIT_OP_WORDS[r.op] ?? r.op,
@@ -7416,7 +7438,7 @@
       digest: `${String(r.digestHex ?? "").slice(0, 8)}\u2026`
     }));
     const empty = records.length === 0;
-    return { show: true, status, rows, empty, emptyLine: empty ? "no bypassed operations yet" : "" };
+    return { show: true, status, rows, empty, emptyLine: empty ? "no bypassed operations yet" : "", armed, budget, remainingMs };
   }
   function setModel() {
     return {
@@ -7719,6 +7741,7 @@
     }
     show("pin-manage");
   });
+  var auditTick = null;
   function renderPinManage() {
     const m = manageModel(pinFlow.view.state);
     $("pin-manage-status").textContent = m.statusLine;
@@ -7732,10 +7755,31 @@
     note.hidden = !m.touch.note;
     refreshAudit();
   }
+  function startAuditTick(model) {
+    stopAuditTick();
+    if (!model.armed) return;
+    const fetchedAt = Date.now();
+    auditTick = setInterval(async () => {
+      const remaining = model.remainingMs - (Date.now() - fetchedAt);
+      if (remaining > 0) {
+        $("pin-manage-audit-status").textContent = armedStatusLine(model.budget, remaining);
+        return;
+      }
+      stopAuditTick();
+      await refreshAudit();
+    }, 1e3);
+  }
+  function stopAuditTick() {
+    if (auditTick) {
+      clearInterval(auditTick);
+      auditTick = null;
+    }
+  }
   async function refreshAudit() {
     const block = $("pin-manage-audit");
     const status = $("pin-manage-audit-status");
     const list = $("pin-manage-audit-list");
+    stopAuditTick();
     if (!pinFlow.view.state?.auditSupported) {
       block.hidden = true;
       return;
@@ -7751,6 +7795,7 @@
     block.hidden = !m.show;
     if (!m.show) return;
     status.textContent = m.status;
+    startAuditTick(m);
     list.innerHTML = m.empty ? `<div class="empty">${escapeHtml(m.emptyLine)}</div>` : m.rows.map((r) => `
       <div class="audit-row">
         <span class="audit-op">${escapeHtml(r.op)}</span>
@@ -7792,7 +7837,10 @@
       refreshAudit();
     }
   });
-  $("pin-manage-back").addEventListener("click", () => show("keys"));
+  $("pin-manage-back").addEventListener("click", () => {
+    stopAuditTick();
+    show("keys");
+  });
   function renderPinChange() {
     const m = changeModel();
     $("pin-change-title").textContent = m.title;

@@ -60,6 +60,9 @@ export class MockDevice {
     // An advancing tick keeps the record timestamps strictly ordered.
     this.bypassBudget = 0;
     this.auditRecords = [];
+    // US-1849 — the sampled session age while armed (0 = not armed, the
+    // firmware's own rule).
+    this.bypassAgeMs = 0;
     this._auditTick = Date.now();
     // The GET_INFO body (US-1706): applet_ver ‖ caps ‖ max_plaintext ‖
     // n ‖ flags — a custody-generation board with no PIN by default; the
@@ -157,22 +160,35 @@ export class MockDevice {
         if (!this._grants) return { sw: SW.CONDITIONS_NOT_SATISFIED, data: new Uint8Array(0) };
         this.touchBypass = true;
         // US-1846 — arming loads the budget at full and starts a fresh ring.
-        this.bypassBudget = 32;
+        // US-1848 — the budget is 128, the owner's number.
+        this.bypassBudget = 128;
+        // US-1849 — the sampled session age: the mock anchors it at 0 on
+        // arm and a test moves it forward by writing `mock.bypassAgeMs`.
+        this.bypassAgeMs = 0;
         this.auditRecords = [];
         return { sw: SW.OK, data: new Uint8Array(0) };
       }
       case NOSTR_CMD.GET_AUDIT: {
         // US-1846 — the ledger read: touch-free, no payload. A PIN-set board
         // with a closed session answers 0x6982 (the gate, not a fault); a
-        // PIN-less board answers honestly empty. Body: budget(1) ‖ n(1) ‖
-        // n × { op(1) ‖ idx(1) ‖ ts_ms(4 BE) ‖ digest(16) }, oldest first.
+        // PIN-less board answers honestly empty. US-1849 — the v0.3 body:
+        // budget(1) ‖ n(1) ‖ age_ms(4 BE) ‖ n × { op(1) ‖ idx(1) ‖
+        // ts_ms(4 BE) ‖ digest(16) }, records from offset 6, oldest first.
+        // The age reads only while the session is up — a dead session's age
+        // is 0, the same rule the firmware pins.
         if (arg.length > 0) return { sw: SW.WRONG_DATA, data: new Uint8Array(0) };
         if (this.pin != null && !this.unlocked) return { sw: 0x6982, data: new Uint8Array(0) };
-        const body = new Uint8Array(2 + this.auditRecords.length * 22);
+        const armed = this.bypassBudget > 0;
+        const age = armed ? this.bypassAgeMs : 0;
+        const body = new Uint8Array(6 + this.auditRecords.length * 22);
         body[0] = this.bypassBudget;
         body[1] = this.auditRecords.length;
+        body[2] = (age >>> 24) & 0xff;
+        body[3] = (age >>> 16) & 0xff;
+        body[4] = (age >>> 8) & 0xff;
+        body[5] = age & 0xff;
         this.auditRecords.forEach((r, i) => {
-          const off = 2 + i * 22;
+          const off = 6 + i * 22;
           body[off] = r.op;
           body[off + 1] = r.idx;
           body[off + 2] = (r.tsMs >>> 24) & 0xff;

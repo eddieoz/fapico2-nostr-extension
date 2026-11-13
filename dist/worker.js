@@ -7976,13 +7976,13 @@
       get_audit: async () => {
         const { sw, data } = await device.run(NOSTR_CMD.GET_AUDIT, 0, new Uint8Array(0));
         if (sw === SW.PIN_SESSION_REQUIRED) {
-          return { supported: true, budget: null, records: null, sessionClosed: true };
+          return { supported: true, budget: null, ageMs: null, records: null, sessionClosed: true };
         }
         if (sw === SW.INS_NOT_SUPPORTED) {
-          return { supported: false, budget: null, records: null, sessionClosed: false };
+          return { supported: false, budget: null, ageMs: null, records: null, sessionClosed: false };
         }
         if (sw !== SW.OK) throw new SwError("GET_AUDIT", sw);
-        if (data.length < 2) {
+        if (data.length < 6) {
           throw Object.assign(new Error("GET_AUDIT answered 9000 with a short body"), {
             name: "SignerError",
             code: "DEVICE_REPLY_MALFORMED"
@@ -7990,7 +7990,8 @@
         }
         const budget = data[0];
         const n = data[1];
-        if (data.length < 2 + n * 22) {
+        const ageMs = (data[2] << 24 | data[3] << 16 | data[4] << 8 | data[5]) >>> 0;
+        if (data.length < 6 + n * 22) {
           throw Object.assign(new Error("GET_AUDIT answered 9000 with a truncated record ring"), {
             name: "SignerError",
             code: "DEVICE_REPLY_MALFORMED"
@@ -7999,7 +8000,7 @@
         const OP_NAMES = { 0: "sign", 1: "nip44_enc", 2: "nip44_dec" };
         const records = [];
         for (let i2 = 0; i2 < n; i2++) {
-          const off = 2 + i2 * 22;
+          const off = 6 + i2 * 22;
           records.push({
             op: OP_NAMES[data[off]] ?? "unknown",
             idx: data[off + 1],
@@ -8007,7 +8008,7 @@
             digestHex: bytesToHex(data.subarray(off + 6, off + 22))
           });
         }
-        return { supported: true, budget, records, sessionClosed: false };
+        return { supported: true, budget, ageMs, records, sessionClosed: false };
       },
       // --- the custody ceremony (US-1715/US-1716) — trusted-only: the
       // consent dialog is the consent, and it lives in the popup. The applet

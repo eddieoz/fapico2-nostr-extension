@@ -118,6 +118,38 @@ export function touchPolicyModel(state) {
  *  block. */
 export const AUDIT_VISIBLE_ROWS = 8; // the device keeps 16; the popup caps the list
 
+/** US-1848 — how long one bypass session lives (US-1849's countdown is
+ *  measured against it). Mirrors the firmware's `BYPASS_SESSION_MS = 600_000`
+ *  (10 minutes from the arm press); the device owns the deadline, this
+ *  copy only renders it. */
+export const BYPASS_SESSION_MS = 600_000;
+
+/** US-1851 — the remaining session window as `M:SS` (`H:MM:SS` past an
+ *  hour). A negative or nonsense input renders as nothing — callers clamp
+ *  before they call; the guard is a belt, not the policy. */
+export function formatRemaining(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return '';
+  const total = Math.floor(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const mm = String(m).padStart(2, '0');
+  const ss = String(s).padStart(2, '0');
+  return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+}
+
+/** US-1851 — the armed line: how many operations are left and when the
+ *  session dies, in one sentence. Shared by the first render and the 1 s
+ *  tick, so the countdown can never disagree with itself between the two
+ *  render paths. */
+export function armedStatusLine(budget, remainingMs) {
+  const left = `${budget} operation${budget === 1 ? '' : 's'} left`;
+  const exp = formatRemaining(remainingMs);
+  return exp
+    ? `bypass armed — ${left} · expires in ${exp}`
+    : `bypass armed — ${left}`;
+}
+
 const AUDIT_OP_WORDS = {
   sign: 'signed',
   nip44_enc: 'encrypted',
@@ -139,8 +171,8 @@ export function formatAuditTime(tsMs) {
   return h > 0 ? `t+${h}:${mm}:${ss}` : `t+${mm}:${ss}`;
 }
 
-export function auditModel(audit) {
-  const hidden = { show: false, status: '', rows: [], empty: false, emptyLine: '' };
+export function auditModel(audit, elapsedMs = 0) {
+  const hidden = { show: false, status: '', rows: [], empty: false, emptyLine: '', armed: false, budget: 0, remainingMs: 0 };
   if (!audit || audit.supported !== true) return hidden;
   if (audit.sessionClosed) {
     return {
@@ -149,11 +181,21 @@ export function auditModel(audit) {
       rows: [],
       empty: false,
       emptyLine: '',
+      armed: false,
+      budget: 0,
+      remainingMs: 0,
     };
   }
   const budget = audit.budget ?? 0;
-  const status = budget > 0
-    ? `bypass armed — ${budget} operation${budget === 1 ? '' : 's'} left`
+  const armed = budget > 0;
+  // US-1851 — the countdown: the device reports the session's sampled age
+  // (US-1849); the client eats its own elapsed time off the remaining
+  // window between polls. max(0, …): an elapsed past the window reads as
+  // expired, never as negative time.
+  const ageMs = audit.ageMs ?? 0;
+  const remainingMs = armed ? Math.max(0, BYPASS_SESSION_MS - ageMs - elapsedMs) : 0;
+  const status = armed
+    ? armedStatusLine(budget, remainingMs)
     : 'bypass off — every signature asks for a touch';
   const records = Array.isArray(audit.records) ? audit.records : [];
   const rows = [...records]
@@ -167,7 +209,7 @@ export function auditModel(audit) {
       digest: `${String(r.digestHex ?? '').slice(0, 8)}…`,
     }));
   const empty = records.length === 0;
-  return { show: true, status, rows, empty, emptyLine: empty ? 'no bypassed operations yet' : '' };
+  return { show: true, status, rows, empty, emptyLine: empty ? 'no bypassed operations yet' : '', armed, budget, remainingMs };
 }
 
 /** US-1706 — the set screen's static copy. */

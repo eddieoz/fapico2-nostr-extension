@@ -1,11 +1,16 @@
 // US-1846 — the touch-bypass accounting surface. The firmware carries a
 // per-session ledger of the operations the bypass exempted from the press:
-// GET_AUDIT (vendor 0x50) answers budget(1) ‖ n(1) ‖ n × { op(1), idx(1),
-// ts_ms(4 BE), digest(16) } behind the same custody gate every identity
+// GET_AUDIT (vendor 0x50) answers, since US-1849's v0.3 body,
+// budget(1) ‖ n(1) ‖ age_ms(4 BE) ‖ n × { op(1), idx(1), ts_ms(4 BE),
+// digest(16) } behind the same custody gate every identity
 // command sits behind — a PIN-set board with a closed session answers 0x6982,
 // which here is a LEGITIMATE answer ("verify the PIN to see it"), never an
 // error to throw. The capability is GET_INFO caps bit 5 (0x0020); the live
 // armed state rides flags bit 3 as before (US-1748).
+//
+// US-1848/1851/1852 — the owner's live-test follow-up: the budget is 128,
+// the armed status line carries a live countdown from the sampled age, and
+// the bypass checkbox reads the device's fresh answer, not the cached view.
 //
 // The user's question this surface answers: "will the board ask me to
 // touch?" — plain words, no jargon, no alarmist styling for neutral states.
@@ -22,7 +27,7 @@ import { createHandlers } from '../src/worker/handlers.js';
 import { createDeviceOwner } from '../src/worker/device.js';
 import { TRUSTED_ONLY_METHODS, PAGE_ALLOWED_METHODS, createDispatch } from '../src/worker/dispatch.js';
 import { MockDevice } from './mock_device.js';
-import { auditModel, AUDIT_VISIBLE_ROWS } from '../src/popup/pin-screens.js';
+import { auditModel, armedStatusLine, formatRemaining, AUDIT_VISIBLE_ROWS } from '../src/popup/pin-screens.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFile(join(root, p), 'utf8');
@@ -87,11 +92,11 @@ test('US-1846 the mock advertises CAP_BYPASS_ACCOUNTING in its GET_INFO body', a
 
 // --- the mock's ledger semantics -----------------------------------------------
 
-test('US-1846 GET_AUDIT on a PIN-less board answers honestly empty (budget 0, n 0)', async () => {
+test('US-1846 GET_AUDIT on a PIN-less board answers honestly empty (budget 0, n 0, age 0)', async () => {
   const mock = new MockDevice();
   const res = await mock.vendor(NOSTR_CMD.GET_AUDIT, 0, new Uint8Array(0));
   assert.equal(res.sw, SW.OK);
-  assert.deepEqual([...res.data], [0, 0]);
+  assert.deepEqual([...res.data], [0, 0, 0, 0, 0, 0]);
 });
 
 test('US-1846 GET_AUDIT on a closed session answers 0x6982 — the gate, not a fault', async () => {
@@ -101,15 +106,17 @@ test('US-1846 GET_AUDIT on a closed session answers 0x6982 — the gate, not a f
   assert.equal(res.sw, SW.PIN_SESSION_REQUIRED);
 });
 
-test('US-1846 arming the bypass loads the budget at 32; the records ring starts empty', async () => {
+test('US-1848 arming the bypass loads the budget at 128; the records ring starts empty', async () => {
   const mock = new MockDevice();
   mock.pin = '731742';
   mock.unlocked = true;
   await mock.vendor(NOSTR_CMD.SET_TOUCH_POLICY, 1, new Uint8Array(0));
   const res = await mock.vendor(NOSTR_CMD.GET_AUDIT, 0, new Uint8Array(0));
   assert.equal(res.sw, SW.OK);
-  assert.equal(res.data[0], 32);
+  assert.equal(res.data[0], 128, "the owner's number, not the first cut's 32");
   assert.equal(res.data[1], 0);
+  assert.equal(((res.data[2] << 24) | (res.data[3] << 16) | (res.data[4] << 8) | res.data[5]) >>> 0, 0,
+    'a fresh arm samples age 0');
 });
 
 test('US-1846 a bypassed SIGN decrements the budget and lands in the ledger, oldest first', async () => {
@@ -122,14 +129,15 @@ test('US-1846 a bypassed SIGN decrements the budget and lands in the ledger, old
   await mock.vendor(NOSTR_CMD.SIGN, 1, arg);
   const res = await mock.vendor(NOSTR_CMD.GET_AUDIT, 0, new Uint8Array(0));
   assert.equal(res.sw, SW.OK);
-  assert.equal(res.data[0], 30, 'two bypassed ops, two decrements');
+  assert.equal(res.data[0], 126, 'two bypassed ops, two decrements of 128');
   assert.equal(res.data[1], 2);
-  // Record shape: op(1) ‖ idx(1) ‖ ts_ms(4 BE) ‖ digest(16) — 22 bytes.
-  assert.equal(res.data.length, 2 + 2 * 22);
-  assert.equal(res.data[2], 0x00, 'OP_SIGN');
-  assert.equal(res.data[3], 0, 'first record names slot 0');
-  assert.equal(res.data[24], 0x00, 'second record is also a SIGN');
-  assert.equal(res.data[25], 1, 'second record names slot 1');
+  // Record shape: budget(1) ‖ n(1) ‖ age_ms(4) then op(1) ‖ idx(1) ‖
+  // ts_ms(4 BE) ‖ digest(16) — 22 bytes per record from offset 6.
+  assert.equal(res.data.length, 6 + 2 * 22);
+  assert.equal(res.data[6], 0x00, 'OP_SIGN');
+  assert.equal(res.data[7], 0, 'first record names slot 0');
+  assert.equal(res.data[28], 0x00, 'second record is also a SIGN');
+  assert.equal(res.data[29], 1, 'second record names slot 1');
 });
 
 test('US-1846 NIP-44 arms land their own op tags in the ledger', async () => {
@@ -142,8 +150,8 @@ test('US-1846 NIP-44 arms land their own op tags in the ledger', async () => {
   const encArg = new Uint8Array([...peer, ...new Uint8Array(8).fill(0x11)]);
   await mock.vendor(NOSTR_CMD.NIP44_ENCRYPT, 0, encArg);
   const res = await mock.vendor(NOSTR_CMD.GET_AUDIT, 0, new Uint8Array(0));
-  assert.equal(res.data[0], 31);
-  assert.equal(res.data[2], 0x01, 'OP_NIP44_ENC');
+  assert.equal(res.data[0], 127);
+  assert.equal(res.data[6], 0x01, 'OP_NIP44_ENC');
 });
 
 test('US-1846 LOCK clears the bypass with the ledger', async () => {
@@ -169,7 +177,8 @@ test('US-1846 get_audit parses the body: budget, records, op words, digest hex',
   const r = await call(handlers, 'get_audit', []);
   assert.equal(r.supported, true);
   assert.equal(r.sessionClosed, false);
-  assert.equal(r.budget, 31);
+  assert.equal(r.budget, 127);
+  assert.equal(typeof r.ageMs, 'number', 'US-1849 — the sampled age rides the parse');
   assert.equal(r.records.length, 1);
   const rec = r.records[0];
   assert.equal(rec.op, 'sign');
@@ -188,7 +197,7 @@ test('US-1846 get_audit on a closed session answers sessionClosed — a legitima
   const { handlers, mock } = rig();
   await call(handlers, 'set_pin', ['731742']); // custody, session closed
   const r = await call(handlers, 'get_audit', []);
-  assert.deepEqual(r, { supported: true, budget: null, records: null, sessionClosed: true });
+  assert.deepEqual(r, { supported: true, budget: null, ageMs: null, records: null, sessionClosed: true });
 });
 
 test('US-1846 get_audit on a PIN-less board answers an honest empty ledger', async () => {
@@ -196,6 +205,7 @@ test('US-1846 get_audit on a PIN-less board answers an honest empty ledger', asy
   const r = await call(handlers, 'get_audit', []);
   assert.equal(r.supported, true);
   assert.equal(r.budget, 0);
+  assert.equal(r.ageMs, 0, 'no session, no age');
   assert.deepEqual(r.records, []);
   assert.equal(r.sessionClosed, false);
 });
@@ -317,4 +327,76 @@ test('US-1846 the timestamp renders as device uptime, never as wall clock', asyn
   assert.equal(formatAuditTime(65_000), 't+01:05');
   assert.equal(formatAuditTime(3_723_000), 't+1:02:03', 'past an hour the hours show');
   assert.equal(formatAuditTime(-1), '', 'a negative is nonsense and renders as nothing');
+});
+
+// --- US-1851 — the countdown ----------------------------------------------------
+
+test('US-1851 formatRemaining counts down as M:SS (H:MM:SS past an hour)', () => {
+  assert.equal(formatRemaining(600_000), '10:00', 'the full window');
+  assert.equal(formatRemaining(383_000), '6:23', 'seconds floor, minutes unpadded');
+  assert.equal(formatRemaining(0), '0:00', 'expired reads as zero, never as a negative');
+  assert.equal(formatRemaining(3_723_000), '1:02:03', 'past an hour the hours show');
+  assert.equal(formatRemaining(-5), '', 'nonsense renders as nothing');
+  assert.equal(formatRemaining(NaN), '', 'nonsense renders as nothing');
+});
+
+test('US-1851 the armed line names the budget and the deadline in one sentence', () => {
+  const line = armedStatusLine(87, 383_000);
+  assert.match(line, /bypass armed/);
+  assert.match(line, /87 operations left/);
+  assert.match(line, /expires in 6:23/);
+  const single = armedStatusLine(1, 600_000);
+  assert.match(single, /1 operation left/, 'the singular is written out');
+  assert.match(single, /expires in 10:00/);
+});
+
+test('US-1851 auditModel: the armed model carries the countdown the tick re-renders', () => {
+  const m = auditModel({ supported: true, sessionClosed: false, budget: 128, ageMs: 100_000, records: [] });
+  assert.equal(m.armed, true, 'budget > 0 *means* armed — the firmware invariant');
+  assert.equal(m.budget, 128);
+  assert.equal(m.remainingMs, 500_000, 'window minus the sampled age');
+  assert.match(m.status, /expires in 8:20/);
+  // The tick's math: elapsed host time eats into the remaining window.
+  const later = auditModel({ supported: true, sessionClosed: false, budget: 128, ageMs: 100_000, records: [] }, 5_000);
+  assert.equal(later.remainingMs, 495_000, 'elapsed between polls counts against the window');
+  assert.match(later.status, /expires in 8:15/);
+});
+
+test('US-1851 auditModel: elapsed past the window clamps at zero, never negative', () => {
+  const m = auditModel({ supported: true, sessionClosed: false, budget: 4, ageMs: 599_000, records: [] }, 5_000);
+  assert.equal(m.remainingMs, 0, 'clamped, not negative');
+  assert.match(m.status, /expires in 0:00/, 'the honest edge, rendered');
+});
+
+test('US-1851 auditModel: bypass off carries no countdown at all', () => {
+  const off = auditModel({ supported: true, sessionClosed: false, budget: 0, ageMs: 0, records: [] });
+  assert.equal(off.armed, false);
+  assert.equal(off.remainingMs, 0);
+  assert.doesNotMatch(off.status, /expires in/);
+});
+
+test('US-1851 the mock surfaces the sampled age and a dead session reads age 0', async () => {
+  const mock = new MockDevice();
+  mock.pin = '731742';
+  mock.unlocked = true;
+  await mock.vendor(NOSTR_CMD.SET_TOUCH_POLICY, 1, new Uint8Array(0));
+  mock.bypassAgeMs = 432_000;
+  let res = await mock.vendor(NOSTR_CMD.GET_AUDIT, 0, new Uint8Array(0));
+  assert.equal(((res.data[2] << 24) | (res.data[3] << 16) | (res.data[4] << 8) | res.data[5]) >>> 0, 432_000);
+  // Spent: the disarm leg (idx 0) ends the armed session — age reads 0.
+  await mock.vendor(NOSTR_CMD.SET_TOUCH_POLICY, 0, new Uint8Array(0));
+  res = await mock.vendor(NOSTR_CMD.GET_AUDIT, 0, new Uint8Array(0));
+  assert.equal(((res.data[2] << 24) | (res.data[3] << 16) | (res.data[4] << 8) | res.data[5]) >>> 0, 0,
+    'no session, no age — the firmware rule the mirror keeps');
+});
+
+test('US-1851 the countdown tick dies with its screen and re-asks the device at zero', async () => {
+  const js = await read('src/popup/popup.js');
+  assert.match(js, /startAuditTick\(/, 'the tick starts with an armed model');
+  assert.match(js, /stopAuditTick\(\)/, '…and is stopped, not leaked');
+  const tick = js.match(/function startAuditTick\(\w+\)[\s\S]*?\n\}/);
+  assert.match(tick[0], /remaining > 0/, 'between polls the host clock advances the line');
+  assert.match(tick[0], /refreshAudit\(\)/, 'at zero the device is re-asked, never trusted locally');
+  const back = js.match(/\$\('pin-manage-back'\)\.addEventListener\('click'[\s\S]*?\n\}\);/);
+  assert.match(back[0], /stopAuditTick/, 'leaving the manage screen stops the countdown');
 });
