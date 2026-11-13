@@ -489,13 +489,18 @@ async function refreshAudit() {
   const status = $('pin-manage-audit-status');
   const list = $('pin-manage-audit-list');
   stopAuditTick();
-  if (!pinFlow.view.state?.auditSupported) {
+  if (!pinFlow.view.state?.auditSupported || !pinFlow.view.state?.auditBodyV3) {
     block.hidden = true;
-    status.hidden = true;
-    // US-1853 review — the early paths still owe the checkbox its
-    // enabled/disabled render: a board without the accounting capability
-    // toggles the policy perfectly well, and skipping the render here
-    // left the box stuck disabled after its own change flight.
+    // US-1854 — a board predating the status line says so, instead of
+    // hiding silently: the owner navigated every screen and found nothing.
+    // Both stale shapes land here — no CAP_BYPASS_ACCOUNTING at all
+    // (pre-US-1846 firmware), or the caps bit advertised on a v0.2 body
+    // (the US-1837..1847 build), whose GET_AUDIT would throw off the
+    // v0.3 6-byte header. The policy itself works on all of them, so the
+    // toggle renders from cache and the notice names the fix — the
+    // firmware, not a fault.
+    status.hidden = false;
+    status.textContent = 'the bypass status needs a firmware update — this board predates it';
     renderTouchCheckbox();
     return;
   }

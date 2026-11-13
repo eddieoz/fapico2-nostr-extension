@@ -536,11 +536,13 @@
     const touchSupported = (caps & CAP_TOUCH_POLICY) !== 0;
     const touchBypass = (flags & FLAG_TOUCH_BYPASS) !== 0;
     const auditSupported = (caps & CAP_BYPASS_ACCOUNTING) !== 0;
+    const ver = info?.appletVer ?? [0, 0];
+    const auditBodyV3 = ver[0] > 0 || ver[1] >= 3;
     if (!supported) {
-      return { supported, pinSet, unlocked, touchSupported, touchBypass, auditSupported, ui: "unsupported" };
+      return { supported, pinSet, unlocked, touchSupported, touchBypass, auditSupported, auditBodyV3, ui: "unsupported" };
     }
     if (!pinSet) {
-      return { supported, pinSet, unlocked, touchSupported, touchBypass, auditSupported, ui: "offer" };
+      return { supported, pinSet, unlocked, touchSupported, touchBypass, auditSupported, auditBodyV3, ui: "offer" };
     }
     return {
       supported,
@@ -549,6 +551,7 @@
       touchSupported,
       touchBypass,
       auditSupported,
+      auditBodyV3,
       ui: unlocked ? "ready" : "locked"
     };
   }

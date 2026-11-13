@@ -60,11 +60,18 @@ export function parsePinState(info) {
   // US-1846 — the ledger capability rides every state, like the touch facts:
   // the manage screen gates its bypass-accounting block on it.
   const auditSupported = (caps & CAP_BYPASS_ACCOUNTING) !== 0;
+  // US-1854 — the v0.3 GET_AUDIT body (the sampled session age, US-1849) is
+  // what the status line renders. A board can advertise the caps bit on a
+  // v0.2 body — the US-1837..1847 build did exactly that — and the handler
+  // would throw off its 6-byte header; the popup needs the version fact to
+  // say "update the firmware" instead of failing silently.
+  const ver = info?.appletVer ?? [0, 0];
+  const auditBodyV3 = ver[0] > 0x00 || ver[1] >= 0x03;
   if (!supported) {
-    return { supported, pinSet, unlocked, touchSupported, touchBypass, auditSupported, ui: 'unsupported' };
+    return { supported, pinSet, unlocked, touchSupported, touchBypass, auditSupported, auditBodyV3, ui: 'unsupported' };
   }
   if (!pinSet) {
-    return { supported, pinSet, unlocked, touchSupported, touchBypass, auditSupported, ui: 'offer' };
+    return { supported, pinSet, unlocked, touchSupported, touchBypass, auditSupported, auditBodyV3, ui: 'offer' };
   }
   return {
     supported,
@@ -73,6 +80,7 @@ export function parsePinState(info) {
     touchSupported,
     touchBypass,
     auditSupported,
+    auditBodyV3,
     ui: unlocked ? 'ready' : 'locked',
   };
 }
