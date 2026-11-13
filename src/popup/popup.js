@@ -492,6 +492,11 @@ async function refreshAudit() {
   if (!pinFlow.view.state?.auditSupported) {
     block.hidden = true;
     status.hidden = true;
+    // US-1853 review — the early paths still owe the checkbox its
+    // enabled/disabled render: a board without the accounting capability
+    // toggles the policy perfectly well, and skipping the render here
+    // left the box stuck disabled after its own change flight.
+    renderTouchCheckbox();
     return;
   }
   let audit;
@@ -499,6 +504,11 @@ async function refreshAudit() {
     audit = await api.call('get_audit');
   } catch {
     block.hidden = true;
+    // US-1853 review — a failed read must not leave a frozen armed line
+    // contradicting the label: hide the status and re-render the toggle.
+    status.hidden = true;
+    stopAuditTick();
+    renderTouchCheckbox();
     return;
   }
   const m = auditModel(audit);
@@ -529,6 +539,7 @@ async function refreshAudit() {
 
 $('pin-manage-verify').addEventListener('click', () => openPinVerify());
 $('pin-manage-change').addEventListener('click', () => {
+  stopAuditTick(); // US-1853 review — the countdown lives on the manage screen only
   renderPinChange();
   show('pin-change');
 });

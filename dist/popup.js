@@ -7802,6 +7802,7 @@
     if (!pinFlow.view.state?.auditSupported) {
       block.hidden = true;
       status.hidden = true;
+      renderTouchCheckbox();
       return;
     }
     let audit;
@@ -7809,6 +7810,9 @@
       audit = await api.call("get_audit");
     } catch {
       block.hidden = true;
+      status.hidden = true;
+      stopAuditTick();
+      renderTouchCheckbox();
       return;
     }
     const m = auditModel(audit);
@@ -7828,6 +7832,7 @@
   }
   $("pin-manage-verify").addEventListener("click", () => openPinVerify());
   $("pin-manage-change").addEventListener("click", () => {
+    stopAuditTick();
     renderPinChange();
     show("pin-change");
   });

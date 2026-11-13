@@ -461,3 +461,22 @@ test('US-1853 the armed status sits with the toggle it describes', async () => {
   assert.match(js, /status\.hidden = !m\.armed && !audit\.sessionClosed/,
     'armed (or gate-closed) shows the status; a plain-off session needs no second sentence');
 });
+
+test('US-1853 review: the failure paths render the toggle and never freeze a stale status', async () => {
+  const js = await read('src/popup/popup.js');
+  const fn = js.match(/async function refreshAudit\(\)[\s\S]*?\n\}/);
+  assert.ok(fn, 'refreshAudit exists');
+  const body = fn[0];
+  // Both early-return paths owe the checkbox its enabled/disabled render —
+  // the box is disabled at the start of its own change flight and only
+  // renderTouchCheckbox re-enables it.
+  const unsupported = body.match(/if \(!pinFlow\.view\.state\?\.auditSupported\)[\s\S]*?\n  \}/);
+  assert.match(unsupported[0], /renderTouchCheckbox\(\)/,
+    'a board without the accounting capability still toggles the policy — no stuck box');
+  const caught = body.match(/catch \{[\s\S]*?\n  \}/);
+  assert.match(caught[0], /status\.hidden = true/, 'a failed read hides the armed line — never frozen');
+  assert.match(caught[0], /renderTouchCheckbox\(\)/, 'a failed read re-renders the toggle');
+  // And every screen exit from the manage surface stops the countdown.
+  const change = js.match(/\$\('pin-manage-change'\)\.addEventListener\('click'[\s\S]*?\n\}\);/);
+  assert.match(change[0], /stopAuditTick/, 'leaving via Change-PIN stops the tick too');
+});
