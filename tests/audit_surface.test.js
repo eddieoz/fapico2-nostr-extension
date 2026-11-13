@@ -392,11 +392,35 @@ test('US-1851 the mock surfaces the sampled age and a dead session reads age 0',
 
 test('US-1851 the countdown tick dies with its screen and re-asks the device at zero', async () => {
   const js = await read('src/popup/popup.js');
-  assert.match(js, /startAuditTick\(/, 'the tick starts with an armed model');
+  assert.match(js, /startAuditTick\(/, 'the tick advances the line between polls');
   assert.match(js, /stopAuditTick\(\)/, '…and is stopped, not leaked');
   const tick = js.match(/function startAuditTick\(\w+\)[\s\S]*?\n\}/);
   assert.match(tick[0], /remaining > 0/, 'between polls the host clock advances the line');
   assert.match(tick[0], /refreshAudit\(\)/, 'at zero the device is re-asked, never trusted locally');
   const back = js.match(/\$\('pin-manage-back'\)\.addEventListener\('click'[\s\S]*?\n\}\);/);
   assert.match(back[0], /stopAuditTick/, 'leaving the manage screen stops the countdown');
+});
+
+// --- US-1852 — the checkbox's single source of truth ----------------------------
+
+test('US-1852 the bypass checkbox renders the device word first, the cache only until it speaks', async () => {
+  const js = await read('src/popup/popup.js');
+  assert.match(js, /latestAudit/, 'the fresh device answer is held, not discarded');
+  assert.match(js, /renderTouchCheckbox\(\)/, 'the checkbox renders through one function');
+  const fn = js.match(/function renderTouchCheckbox\(\)[\s\S]*?\n\}/);
+  assert.ok(fn, 'renderTouchCheckbox exists');
+  assert.match(fn[0], /budget > 0/, 'checked = the bypass is active — budget>0 *means* armed');
+  assert.match(fn[0], /sessionClosed/, 'a closed session can only mean the bypass is gone');
+});
+
+test('US-1852 the label and the checked state finally agree', async () => {
+  const html = await read('src/popup/popup.html');
+  assert.match(html, /Bypass active — signatures run without a touch/,
+    'the owner-chose label: the state the checkbox shows is the state it names');
+  assert.doesNotMatch(html, /Require touch for signing/, 'the inverted-cached label is gone');
+  // And the change leg survives the flip unchecked-to-checked unchanged:
+  // unchecking (bypass off) is the direction that costs the consent press.
+  const js = await read('src/popup/popup.js');
+  const handler = js.match(/\$\('pin-manage-touch'\)\.addEventListener\('change'[\s\S]*?\n\}\);/);
+  assert.match(handler[0], /disable = !box\.checked/, 'unchecking still asks the board to end the bypass');
 });

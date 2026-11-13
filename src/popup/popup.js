@@ -389,23 +389,52 @@ $('pin-verify-cancel').addEventListener('click', () => {
 
 // US-1851 — the countdown's 1 s interval, while an armed session is live.
 let auditTick = null;
+// US-1852 — the bypass checkbox has ONE source of truth: the device's own
+// answer from the most recent get_audit. `pinFlow.view.state` is a cache
+// from screen open — the exact thing that left the checkbox claiming an
+// armed bypass the board had already expired. When no fresh answer exists
+// yet (old firmware without the accounting capability, or the first paint
+// before the fetch resolves), the cached policy is the fallback and is
+// replaced the moment the device speaks.
+let latestAudit = null; // { audit, model, fetchedAt } — the device's last word
+
+function renderTouchCheckbox() {
+  const box = $('pin-manage-touch');
+  const note = $('pin-manage-touch-note');
+  const audit = latestAudit?.audit;
+  if (audit?.supported && !audit.sessionClosed) {
+    // Fresh device truth. Checked = the bypass is active — budget > 0
+    // *means* armed (the firmware invariant), budget 0 is "off" whatever
+    // the reason: expired, spent, disarmed, never armed.
+    box.checked = audit.budget > 0;
+  } else if (audit?.sessionClosed) {
+    // The bypass dies with the session — a closed session can only mean
+    // the bypass is gone, whatever the cached view says.
+    box.checked = false;
+  } else {
+    // No fresh word (pre-accounting firmware or first paint): fall back to
+    // the cached policy — inverted, because checked now *is* the bypass.
+    const m = manageModel(pinFlow.view.state);
+    box.checked = !m.touch.requireTouch;
+  }
+  // US-1748 — the toggle is a custody change: the board refuses the disable
+  // leg without an open session, so a locked one renders it read-only.
+  const m = manageModel(pinFlow.view.state);
+  box.disabled = !m.touch.supported || !m.touch.unlocked;
+  note.textContent = m.touch.note;
+  note.hidden = !m.touch.note;
+}
 
 function renderPinManage() {
   const m = manageModel(pinFlow.view.state);
   $('pin-manage-status').textContent = m.statusLine;
   $('pin-manage-verify').hidden = !m.canVerify;
   $('pin-manage-lock').hidden = !m.canLock;
-  // US-1748 — the touch-for-signing checkbox renders the board's live
-  // policy: checked = the touch is required, disabled on firmware without
-  // CAP_TOUCH_POLICY, the note naming an unsupported board.
-  const box = $('pin-manage-touch');
-  const note = $('pin-manage-touch-note');
-  box.checked = m.touch.requireTouch;
-  // US-1748 — the toggle is a custody change: the board refuses the disable
-  // leg without an open session, so a locked one renders it read-only.
-  box.disabled = !m.touch.supported || !m.touch.unlocked;
-  note.textContent = m.touch.note;
-  note.hidden = !m.touch.note;
+  // US-1748/US-1852 — the bypass checkbox renders the device's fresh
+  // answer first (renderTouchCheckbox), the cached policy only until the
+  // device speaks. Checked = the bypass is active — the label and the
+  // state finally agree.
+  renderTouchCheckbox();
   // US-1846 — the bypass ledger rides the same screen: opening it (and every
   // re-render) re-reads the accounting so the budget line is fresh BEFORE the
   // user relies on it.
@@ -462,6 +491,11 @@ async function refreshAudit() {
     return;
   }
   const m = auditModel(audit);
+  // US-1852 — the device has spoken: this read is the checkbox's source of
+  // truth, applied before the ledger renders so the toggle and the status
+  // line can never disagree about the session's state.
+  latestAudit = { audit, model: m, fetchedAt: Date.now() };
+  renderTouchCheckbox();
   block.hidden = !m.show;
   if (!m.show) return;
   status.textContent = m.status;

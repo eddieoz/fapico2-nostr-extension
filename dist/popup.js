@@ -7742,17 +7742,30 @@
     show("pin-manage");
   });
   var auditTick = null;
+  var latestAudit = null;
+  function renderTouchCheckbox() {
+    const box = $("pin-manage-touch");
+    const note = $("pin-manage-touch-note");
+    const audit = latestAudit?.audit;
+    if (audit?.supported && !audit.sessionClosed) {
+      box.checked = audit.budget > 0;
+    } else if (audit?.sessionClosed) {
+      box.checked = false;
+    } else {
+      const m2 = manageModel(pinFlow.view.state);
+      box.checked = !m2.touch.requireTouch;
+    }
+    const m = manageModel(pinFlow.view.state);
+    box.disabled = !m.touch.supported || !m.touch.unlocked;
+    note.textContent = m.touch.note;
+    note.hidden = !m.touch.note;
+  }
   function renderPinManage() {
     const m = manageModel(pinFlow.view.state);
     $("pin-manage-status").textContent = m.statusLine;
     $("pin-manage-verify").hidden = !m.canVerify;
     $("pin-manage-lock").hidden = !m.canLock;
-    const box = $("pin-manage-touch");
-    const note = $("pin-manage-touch-note");
-    box.checked = m.touch.requireTouch;
-    box.disabled = !m.touch.supported || !m.touch.unlocked;
-    note.textContent = m.touch.note;
-    note.hidden = !m.touch.note;
+    renderTouchCheckbox();
     refreshAudit();
   }
   function startAuditTick(model) {
@@ -7792,6 +7805,8 @@
       return;
     }
     const m = auditModel(audit);
+    latestAudit = { audit, model: m, fetchedAt: Date.now() };
+    renderTouchCheckbox();
     block.hidden = !m.show;
     if (!m.show) return;
     status.textContent = m.status;

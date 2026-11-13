@@ -169,11 +169,12 @@
         <button id="pin-manage-change" class="ghost">Change PIN</button>
         <button id="pin-manage-lock" class="ghost">Lock now</button>
       </div>
-      <!-- US-1748 — the touch-for-signing policy. Checked = every signing
-           arm asks for the press; unchecking it asks the board to disable
-           the touch, which needs the session and its own consent press.
-           Rendered from GET_INFO's CAP_TOUCH_POLICY / FLAG_TOUCH_BYPASS. -->
-      <label class="row" id="pin-manage-touch-row"><input type="checkbox" id="pin-manage-touch" /><span>Require touch for signing</span></label>
+      <!-- US-1748/US-1852 — the touch-for-signing policy. Checked = the
+           bypass is active (signatures run without a touch); unchecking it
+           ends the bypass, which needs the session and its own consent
+           press. The state renders from the device's fresh get_audit word
+           first, the cached GET_INFO policy only until the device speaks. -->
+      <label class="row" id="pin-manage-touch-row"><input type="checkbox" id="pin-manage-touch" /><span>Bypass active — signatures run without a touch</span></label>
       <p class="muted" id="pin-manage-touch-note" hidden></p>
       <!-- US-1846 — the bypass ledger. Rendered only when the board
            advertises CAP_BYPASS_ACCOUNTING; the line answers "will the board
