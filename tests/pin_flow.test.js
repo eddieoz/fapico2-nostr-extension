@@ -120,3 +120,23 @@ test('US-1846 parsePinState exposes auditSupported from CAP_BYPASS_ACCOUNTING on
   const old = parsePinState({ caps: 0x0003, flags: 0x00 });
   assert.equal(old.auditSupported, false);
 });
+
+test('US-1854 parsePinState exposes auditBodyV3 — the version the countdown needs', () => {
+  // The v0.3 GET_AUDIT body (the sampled age) is what the status line
+  // renders; a board advertising the caps bit on a v0.2 body (the
+  // US-1837..1847 build) would throw the handler off its 6-byte header.
+  assert.equal(parsePinState({ appletVer: [0x00, 0x03], caps: 0x003f, flags: 0x03 }).auditBodyV3, true,
+    'the v0.3 body carries the age');
+  assert.equal(parsePinState({ appletVer: [0x00, 0x02], caps: 0x003f, flags: 0x03 }).auditBodyV3, false,
+    'the audit-epic build advertises the caps bit on a v0.2 body');
+  assert.equal(parsePinState({ appletVer: [0x00, 0x02], caps: 0x001f, flags: 0x03 }).auditBodyV3, false,
+    'the US-1748 generation: neither the capability nor the body');
+  // The fact rides every branch, like its siblings.
+  for (const info of [
+    { appletVer: [0x00, 0x02], caps: 0x0003, flags: 0x00 },
+    { appletVer: [0x00, 0x03], caps: 0x0007, flags: 0x00 },
+    { appletVer: [0x00, 0x03], caps: 0x003f, flags: 0x03 },
+  ]) {
+    assert.equal(typeof parsePinState(info).auditBodyV3, 'boolean');
+  }
+});

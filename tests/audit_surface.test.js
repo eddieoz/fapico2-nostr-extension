@@ -462,6 +462,20 @@ test('US-1853 the armed status sits with the toggle it describes', async () => {
     'armed (or gate-closed) shows the status; a plain-off session needs no second sentence');
 });
 
+test('US-1854 a board predating the status line says so, instead of hiding silently', async () => {
+  const js = await read('src/popup/popup.js');
+  // The owner navigated every screen and found nothing: the capability
+  // gate hid the block without a word. A stale body (or missing
+  // capability) now renders one quiet, actionable line under the toggle.
+  const fn = js.match(/async function refreshAudit\(\)[\s\S]*?\n\}/);
+  assert.ok(fn, 'refreshAudit exists');
+  const gate = fn[0].match(/if \(!pinFlow\.view\.state\?\.auditSupported \|\| !pinFlow\.view\.state\?\.auditBodyV3\)[\s\S]*?\n    return;\n  \}/);
+  assert.ok(gate, 'the gate covers BOTH stale shapes: no capability, and a v0.2 body');
+  assert.match(gate[0], /status\.hidden = false/, 'the notice renders');
+  assert.match(gate[0], /firmware/, 'the notice names the fix — the firmware, not a fault');
+  assert.match(gate[0], /renderTouchCheckbox\(\)/, 'the toggle still renders from cache — the policy works on old firmware');
+});
+
 test('US-1853 review: the failure paths render the toggle and never freeze a stale status', async () => {
   const js = await read('src/popup/popup.js');
   const fn = js.match(/async function refreshAudit\(\)[\s\S]*?\n\}/);
