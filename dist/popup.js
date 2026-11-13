@@ -7382,12 +7382,13 @@
   }
   var AUDIT_VISIBLE_ROWS = 8;
   var BYPASS_SESSION_MS = 6e5;
+  function hms(ms) {
+    const total = Math.floor(ms / 1e3);
+    return [Math.floor(total / 3600), Math.floor(total % 3600 / 60), total % 60];
+  }
   function formatRemaining(ms) {
     if (!Number.isFinite(ms) || ms < 0) return "";
-    const total = Math.floor(ms / 1e3);
-    const h = Math.floor(total / 3600);
-    const m = Math.floor(total % 3600 / 60);
-    const s = total % 60;
+    const [h, m, s] = hms(ms);
     const mm = String(m).padStart(2, "0");
     const ss = String(s).padStart(2, "0");
     return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
@@ -7404,10 +7405,7 @@
   };
   function formatAuditTime(tsMs) {
     if (!Number.isFinite(tsMs) || tsMs < 0) return "";
-    const total = Math.floor(tsMs / 1e3);
-    const h = Math.floor(total / 3600);
-    const m = Math.floor(total % 3600 / 60);
-    const s = total % 60;
+    const [h, m, s] = hms(tsMs);
     const mm = String(m).padStart(2, "0");
     const ss = String(s).padStart(2, "0");
     return h > 0 ? `t+${h}:${mm}:${ss}` : `t+${mm}:${ss}`;
@@ -7508,6 +7506,7 @@
     $(`screen-${screen}`)?.classList.add("active");
     $("nav-keys").classList.toggle("active", screen === "keys");
     $("nav-sites").classList.toggle("active", screen === "sites");
+    stopAuditTick();
     state.screen = screen;
   }
   function notice(msg, cls = "") {
@@ -7754,7 +7753,7 @@
     const box = $("pin-manage-touch");
     const label = $("pin-manage-touch-label");
     const note = $("pin-manage-touch-note");
-    const audit = latestAudit?.audit;
+    const audit = latestAudit;
     if (audit?.supported && !audit.sessionClosed) {
       box.checked = audit.budget > 0;
     } else if (audit?.sessionClosed) {
@@ -7820,7 +7819,7 @@
       return;
     }
     const m = auditModel(audit);
-    latestAudit = { audit, model: m, fetchedAt: Date.now() };
+    latestAudit = audit;
     renderTouchCheckbox();
     block.hidden = !m.show;
     if (!m.show) return;

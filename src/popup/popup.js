@@ -75,6 +75,10 @@ function show(screen) {
   $(`screen-${screen}`)?.classList.add('active');
   $('nav-keys').classList.toggle('active', screen === 'keys');
   $('nav-sites').classList.toggle('active', screen === 'sites');
+  // US-1856 review — every screen change stops the countdown, not just
+  // the Back and Change-PIN exits: the tick's element is the manage
+  // screen's, and no nav path may leave it writing into a hidden element.
+  stopAuditTick();
   // US-1706 — the verify dialog returns here when it closes; a gated op
   // that hit the custody gate resumes on this screen.
   state.screen = screen;
@@ -396,7 +400,7 @@ let auditTick = null;
 // yet (old firmware without the accounting capability, or the first paint
 // before the fetch resolves), the cached policy is the fallback and is
 // replaced the moment the device speaks.
-let latestAudit = null; // { audit, model, fetchedAt } — the device's last word
+let latestAudit = null; // the device's last get_audit answer — the checkbox's one source of truth
 
 // US-1853 — the label states the state the checkbox shows, in the owner's
 // words: whichever way the toggle sits, the sentence names it. A static
@@ -410,7 +414,7 @@ function renderTouchCheckbox() {
   const box = $('pin-manage-touch');
   const label = $('pin-manage-touch-label');
   const note = $('pin-manage-touch-note');
-  const audit = latestAudit?.audit;
+  const audit = latestAudit;
   if (audit?.supported && !audit.sessionClosed) {
     // Fresh device truth. Checked = the bypass is active — budget > 0
     // *means* armed (the firmware invariant), budget 0 is "off" whatever
@@ -520,7 +524,7 @@ async function refreshAudit() {
   // US-1852 — the device has spoken: this read is the checkbox's source of
   // truth, applied before the ledger renders so the toggle and the status
   // line can never disagree about the session's state.
-  latestAudit = { audit, model: m, fetchedAt: Date.now() };
+  latestAudit = audit;
   renderTouchCheckbox();
   block.hidden = !m.show;
   if (!m.show) return;
@@ -603,7 +607,6 @@ $('pin-manage-back').addEventListener('click', () => {
   stopAuditTick(); // US-1851 — the countdown lives only while its screen does
   show('keys');
 });
-
 
 // --- PIN change (US-1706) ------------------------------------------------------------
 

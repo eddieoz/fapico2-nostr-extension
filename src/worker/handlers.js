@@ -367,17 +367,21 @@ export function createHandlers({
     },
 
     // --- touch policy (US-1748) — trusted-only: rewriting the consent
-    // model is a custody decision, not a page's. The disable leg needs an
+    // model is a custody decision, not a page's. The bypass leg needs an
     // open PIN session AND a physical press on the board; the refusals
     // (6A82 no PIN, 0x6982 session closed, 0x6985 the press never came,
     // 6A86 bad P1) cross typed from the error map.
-    touch_policy_set: async ([disable]) => {
-      if (typeof disable !== 'boolean') {
+    touch_policy_set: async ([bypass]) => {
+      if (typeof bypass !== 'boolean') {
         throw new SignerError('BAD_TOUCH_POLICY', 'the touch-policy flag must be true or false');
       }
+      // US-1856 — the parameter names the WIRE direction (`bypass ? 1 : 0`
+      // → P1), matching the popup's `arm` and the checked-bypass-active
+      // semantics; the old `disable` name came from the pre-US-1852
+      // checkbox world that produced the polarity bug.
       // The envelope idx rides P1 on the device: 0 re-enables the touch,
       // 1 disables it for the signing arms.
-      await runOk(NOSTR_CMD.SET_TOUCH_POLICY, disable ? 1 : 0, new Uint8Array(0));
+      await runOk(NOSTR_CMD.SET_TOUCH_POLICY, bypass ? 1 : 0, new Uint8Array(0));
       // The advertisement moved: a fresh GET_INFO so the popup's render
       // never relies on what the board said before the change. Forced —
       // this is the user-initiated read of a user-initiated toggle, and an
