@@ -170,10 +170,11 @@
         <button id="pin-manage-lock" class="ghost">Lock now</button>
       </div>
       <!-- US-1748/US-1852/US-1853 — the touch-for-signing policy. Checked =
-           the bypass is active (signatures run without a touch); unchecking
-           it ends the bypass, which needs the session and its own consent
-           press. The label is rendered per state ("active"/"not active") —
-           the checkbox never wears a sentence it isn't showing. -->
+           the bypass is active (signatures run without a touch); CHECKING
+           arms it — an open session plus a consent press on the board;
+           unchecking is friction-free. The label is rendered per state
+           ("active"/"not active") — the checkbox never wears a sentence it
+           isn't showing. -->
       <label class="row" id="pin-manage-touch-row"><input type="checkbox" id="pin-manage-touch" /><span id="pin-manage-touch-label">Bypass not active — signatures need a touch</span></label>
       <p class="muted" id="pin-manage-touch-note" hidden></p>
       <!-- US-1853 — the status line sits with the toggle it describes: when
