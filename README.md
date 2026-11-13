@@ -3,9 +3,15 @@
 A Nostr-only, hardware-first browser extension: every `window.nostr` key
 operation is performed by a **fapico2 board** (RP2350 running the
 [`fapico2`](https://github.com/eddieoz/fapico2) firmware's Nostr applet) over
-WebHID. Keys never live in the browser; every signature, NIP-44
-encrypt/decrypt and key-set change is consented by a **physical touch** on the
-device (firmware-enforced — the extension cannot bypass it).
+WebHID. Keys never live in the browser; every signature and NIP-44
+encrypt/decrypt is consented by a **physical touch** on the device — with one
+deliberate exception: the touch bypass, which **you arm yourself**, from the
+PIN manage screen, and which always costs an open PIN session **and** a
+physical press on the board, then expires (10 minutes or 255 exempt
+operations — the firmware's accounting; see the board's
+[release notes](https://github.com/eddieoz/fapico2/blob/main/docs/release-notes-alpha-v0.7.0.md)).
+Key-set changes (generate, import, label, delete) are always touched. The
+consent ceremony is firmware-enforced — the extension can only ask.
 
 - **Status:** implemented and hardware-verified. The release ceremony
   (US-1709) PASSED 2026-10-11 and the full US-1734 UX-journey gate PASSED
@@ -42,8 +48,9 @@ device (firmware-enforced — the extension cannot bypass it).
   never exportable: the board keeps them, and the extension has no export
   verb.
 - **Per-site consent** — a grant popup per site and method, with optional
-  "remember this site"; the device touch is always required on top, and the
-  Sites screen lists and revokes grants.
+  "remember this site"; the device touch (or, while you have armed the
+  bounded touch bypass, the armed session's on-device accounting) is
+  required on top, and the Sites screen lists and revokes grants.
 - **One device owner** — the MV3 service worker exclusively owns the WebHID
   handle; concurrent requests serialize through its FIFO queue (the firmware
   serves one transaction at a time).
@@ -60,7 +67,7 @@ device (firmware-enforced — the extension cannot bypass it).
 - **Bundler:** esbuild 0.28 (7 IIFE bundles into `dist/`)
 - **Package manager:** pnpm 10 (`pnpm-workspace.yaml` allows esbuild's
   postinstall)
-- **Tests:** `node --test` (350 tests), a CDP smoke gate on real Chrome, and
+- **Tests:** `node --test` (479 tests), a CDP smoke gate on real Chrome, and
   a manual hardware-ceremony page
 - **Crypto libraries (bundled):** `@noble/hashes`, `@noble/curves`,
   `@scure/base`; `nostr-tools` for independent verification in tests and the
@@ -182,7 +189,7 @@ page ─ window.nostr ─ provider (MAIN) ─ bridge (isolated) ─ worker ─ W
 | Command            | Description                                                            |
 | ------------------ | ---------------------------------------------------------------------- |
 | `pnpm build`       | Bundle `src/` into `dist/` (esbuild + verbatim copies)                 |
-| `pnpm test`        | Build, then the full `node --test` suite (350 tests)                   |
+| `pnpm test`        | Build, then the full `node --test` suite (479 tests)                   |
 | `pnpm run check`   | Build + bundle-freshness diff (`git diff --exit-code -- dist/`) + tests |
 | `pnpm run test:smoke` | CDP smoke gate on real Chrome (`CHROME_PATH` required)              |
 | `node tests/manual/visual-pass.mjs` | Screenshot journey through the dist pages (manual; writes `docs/visual/`) |
@@ -206,7 +213,7 @@ pnpm run test:smoke  # needs Chrome: window.nostr installs and rejects absence t
 ## Hardware contract
 
 The extension speaks the vendor protocol documented in the firmware tree:
-`firmware/src/nostr_wire.rs` (commands `0x40`–`0x4A`, CBOR envelope
+`firmware/src/nostr_wire.rs` (commands `0x40`–`0x50`, CBOR envelope
 `[idx, arg]` → `{1: sw, 2?: data}`, D13 status vocabulary, 1,891-byte
 argument cap), CTAPHID framing per the firmware's
 `docs/ctap2-hid-framing.md`, on USB HID interface 3 (usage page `0xFF00`,
@@ -219,7 +226,8 @@ usage `0x01`). The wire bytes are pinned by
 runs `tests/manual/ceremony.html` against a flashed board (serve the repo
 root, e.g. `python3 -m http.server`):
 
-1. INIT — capFlags `0x00`, version `0.1.0`
+1. INIT — the applet version and caps the flashed board advertises
+   (`0.3` / `0x003F` on current firmware)
 2. Generate key (touch)
 3. `getPublicKey` from the live page path
 4. `signEvent` (touch) — the signature verifies against nostr-tools
@@ -229,10 +237,12 @@ root, e.g. `python3 -m http.server`):
 Steps are ordered: a failed step blocks the next, and a partial pass is not
 a pass. The ceremony's JSON results are copied into the release notes; the
 records live in [docs/ceremony-results.md](docs/ceremony-results.md) — the
-latest: **PASSED 2026-10-11** (firmware `fapico-nostr` `feat/nostr` at
-`a795d0d`; signature nostr-tools-verified, NIP-44 round trip byte-exact,
-delete npub-echo matched) and the **US-1734 UX-journey gate PASSED
-2026-10-13** (the full journey on hardware). CI additionally runs the CDP
+latest: **PASSED 2026-11-01** (the US-1748 bypass board-run wedges,
+[`docs/ceremony-results.md`](docs/ceremony-results.md); note the checkbox
+polarity was inverted in US-1852/1853 — checked = bypass active) and the
+**US-1734 UX-journey gate PASSED 2026-10-13** (the full journey on
+hardware). **The v0.7.0 ceremony is owed**: the polarity inversion and the
+accounting surface are not yet recorded on hardware. CI additionally runs the CDP
 smoke gate on real Chrome — a failure there is a release blocker too.
 
 ## Troubleshooting and known browser quirks

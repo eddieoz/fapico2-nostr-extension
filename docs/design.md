@@ -1,3 +1,11 @@
+> **Status (2026-11-13):** locked as the 2026-10-11 design record. Superseded
+> in part since: **export was removed** (US-1699 — import-only custody; the
+> §5 export line is frozen history and the retired verb answers `6D00`), and
+> the consent model grew the **consented, accounted touch bypass**
+> (US-1741..1856 — D4's "touch always required" holds for every operation
+> except the three signing arms inside an armed, bounded session; the
+> checkbox polarity was inverted in US-1852/1853: checked = bypass active).
+
 # Design: fapico2-nostr-extension
 
 **Status:** approved (2026-10-11, brainstorming session with eddieoz)
