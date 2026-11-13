@@ -169,19 +169,22 @@
         <button id="pin-manage-change" class="ghost">Change PIN</button>
         <button id="pin-manage-lock" class="ghost">Lock now</button>
       </div>
-      <!-- US-1748/US-1852 — the touch-for-signing policy. Checked = the
-           bypass is active (signatures run without a touch); unchecking it
-           ends the bypass, which needs the session and its own consent
-           press. The state renders from the device's fresh get_audit word
-           first, the cached GET_INFO policy only until the device speaks. -->
-      <label class="row" id="pin-manage-touch-row"><input type="checkbox" id="pin-manage-touch" /><span>Bypass active — signatures run without a touch</span></label>
+      <!-- US-1748/US-1852/US-1853 — the touch-for-signing policy. Checked =
+           the bypass is active (signatures run without a touch); unchecking
+           it ends the bypass, which needs the session and its own consent
+           press. The label is rendered per state ("active"/"not active") —
+           the checkbox never wears a sentence it isn't showing. -->
+      <label class="row" id="pin-manage-touch-row"><input type="checkbox" id="pin-manage-touch" /><span id="pin-manage-touch-label">Bypass not active — signatures need a touch</span></label>
       <p class="muted" id="pin-manage-touch-note" hidden></p>
+      <!-- US-1853 — the status line sits with the toggle it describes: when
+           the bypass is armed, the counts and the countdown render right
+           under the label. Hidden when a plain-off session would only
+           repeat what the label already says. -->
+      <p class="muted" id="pin-manage-audit-status" role="status" hidden></p>
       <!-- US-1846 — the bypass ledger. Rendered only when the board
-           advertises CAP_BYPASS_ACCOUNTING; the line answers "will the board
-           ask me to touch?" in plain words, and the ring lists the operations
+           advertises CAP_BYPASS_ACCOUNTING; the ring lists the operations
            the armed bypass exempted from the press (newest first). -->
       <div id="pin-manage-audit" hidden>
-        <p class="muted" id="pin-manage-audit-status" role="status"></p>
         <div id="pin-manage-audit-list"></div>
       </div>
       <div class="actions">

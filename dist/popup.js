@@ -7743,8 +7743,13 @@
   });
   var auditTick = null;
   var latestAudit = null;
+  var TOUCH_LABELS = {
+    on: "Bypass active \u2014 signatures run without a touch",
+    off: "Bypass not active \u2014 signatures need a touch"
+  };
   function renderTouchCheckbox() {
     const box = $("pin-manage-touch");
+    const label = $("pin-manage-touch-label");
     const note = $("pin-manage-touch-note");
     const audit = latestAudit?.audit;
     if (audit?.supported && !audit.sessionClosed) {
@@ -7755,6 +7760,7 @@
       const m2 = manageModel(pinFlow.view.state);
       box.checked = !m2.touch.requireTouch;
     }
+    label.textContent = box.checked ? TOUCH_LABELS.on : TOUCH_LABELS.off;
     const m = manageModel(pinFlow.view.state);
     box.disabled = !m.touch.supported || !m.touch.unlocked;
     note.textContent = m.touch.note;
@@ -7795,6 +7801,7 @@
     stopAuditTick();
     if (!pinFlow.view.state?.auditSupported) {
       block.hidden = true;
+      status.hidden = true;
       return;
     }
     let audit;
@@ -7809,6 +7816,7 @@
     renderTouchCheckbox();
     block.hidden = !m.show;
     if (!m.show) return;
+    status.hidden = !m.armed && !audit.sessionClosed;
     status.textContent = m.status;
     startAuditTick(m);
     list.innerHTML = m.empty ? `<div class="empty">${escapeHtml(m.emptyLine)}</div>` : m.rows.map((r) => `
@@ -7838,18 +7846,17 @@
   });
   $("pin-manage-touch").addEventListener("change", async (ev) => {
     const box = ev.target;
-    const disable = !box.checked;
+    const arm = box.checked;
     box.disabled = true;
-    if (disable) touch(true, "touch the board to confirm \u2014 the press is the consent");
+    if (arm) touch(true, "touch the board to confirm \u2014 the press is the consent");
     try {
-      const r = await api.call("touch_policy_set", disable);
+      const r = await api.call("touch_policy_set", arm);
       pinFlow.touchInfoRefreshed(r.info);
     } catch (err) {
       deviceCallNotice(err);
     } finally {
       touch(false);
-      renderPinManage();
-      refreshAudit();
+      await refreshAudit();
     }
   });
   $("pin-manage-back").addEventListener("click", () => {

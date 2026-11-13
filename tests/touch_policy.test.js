@@ -288,26 +288,31 @@ test('US-1748 the manage screen renders the checkbox from the device word and na
   const html = await read('src/popup/popup.html');
   assert.ok(html.includes('id="pin-manage-touch-row"'), 'the checkbox row exists');
   assert.ok(html.includes('id="pin-manage-touch"'), 'the checkbox exists');
-  assert.ok(html.includes('Bypass active — signatures run without a touch'),
-    'the label names the state the checkbox shows (US-1852: checked = bypass active)');
+  // US-1853 — the label is rendered per state (popup.js carries both
+  // sentences); the HTML ships the element with the default off-label,
+  // which is the state a fresh manage screen actually shows.
+  assert.ok(html.includes('id="pin-manage-touch-label"'), 'the label element exists');
+  assert.ok(html.includes('Bypass not active — signatures need a touch'),
+    'the default label names the state a fresh screen shows');
   assert.ok(html.includes('id="pin-manage-touch-note"'), 'the note element exists');
 });
 
-test('US-1748 a refusal re-renders from pinFlow — the checkbox snaps back, the sentence is shown', async () => {
+test('US-1748/US-1853 a refusal re-renders from the device word — the checkbox snaps back, the sentence is shown', async () => {
   const src = await read('src/popup/popup.js');
   const handler = src.match(/\$\('pin-manage-touch'\)\.addEventListener\('change'[\s\S]*?\n\}\);/);
   assert.ok(handler, 'the change listener exists');
   const body = handler[0];
-  assert.match(body, /api\.call\('touch_policy_set', disable\)/,
+  assert.match(body, /api\.call\('touch_policy_set', arm\)/,
     'the flag rides the variadic call bare — a wrapped array delivered [[false]] and the worker refused the shape');
-  assert.match(body, /if \(disable\) touch\(true/,
-    'the disable leg arms the touch bar — the board is waiting for the consent press and the wait must be legible');
+  assert.match(body, /if \(arm\) touch\(true/,
+    'the arm leg shows the touch bar — the board is waiting for the consent press and the wait must be legible');
   assert.match(body, /touch\(false\)/, 'the bar clears on every path, refusal included');
   assert.match(body, /pinFlow\.touchInfoRefreshed\(r\.info\)/, 'success refreshes the advertisement in place');
   assert.match(body, /deviceCallNotice\(err\)/, 'the refusal names its typed sentence');
   const finallyIdx = body.indexOf('finally');
-  const renderIdx = body.lastIndexOf('renderPinManage()');
-  assert.ok(finallyIdx >= 0 && renderIdx > finallyIdx, 'the re-render runs on every path — success and refusal');
+  const refreshIdx = body.lastIndexOf('await refreshAudit()');
+  assert.ok(finallyIdx >= 0 && refreshIdx > finallyIdx,
+    'the fresh device read runs on every path — success and refusal — and it renders the outcome');
 });
 
 test('US-1748 the disable leg is not gated through the PIN resume — it refuses in band', async () => {
