@@ -398,8 +398,17 @@ let auditTick = null;
 // replaced the moment the device speaks.
 let latestAudit = null; // { audit, model, fetchedAt } — the device's last word
 
+// US-1853 — the label states the state the checkbox shows, in the owner's
+// words: whichever way the toggle sits, the sentence names it. A static
+// "active" label over an unchecked box lied twice a day.
+const TOUCH_LABELS = {
+  on: 'Bypass active — signatures run without a touch',
+  off: 'Bypass not active — signatures need a touch',
+};
+
 function renderTouchCheckbox() {
   const box = $('pin-manage-touch');
+  const label = $('pin-manage-touch-label');
   const note = $('pin-manage-touch-note');
   const audit = latestAudit?.audit;
   if (audit?.supported && !audit.sessionClosed) {
@@ -417,6 +426,7 @@ function renderTouchCheckbox() {
     const m = manageModel(pinFlow.view.state);
     box.checked = !m.touch.requireTouch;
   }
+  label.textContent = box.checked ? TOUCH_LABELS.on : TOUCH_LABELS.off;
   // US-1748 — the toggle is a custody change: the board refuses the disable
   // leg without an open session, so a locked one renders it read-only.
   const m = manageModel(pinFlow.view.state);
@@ -481,6 +491,7 @@ async function refreshAudit() {
   stopAuditTick();
   if (!pinFlow.view.state?.auditSupported) {
     block.hidden = true;
+    status.hidden = true;
     return;
   }
   let audit;
@@ -498,6 +509,12 @@ async function refreshAudit() {
   renderTouchCheckbox();
   block.hidden = !m.show;
   if (!m.show) return;
+  // US-1853 — the status line lives next to the checkbox: when the bypass
+  // is armed the counts and the countdown sit right under the label that
+  // named the state. A plain-off session needs no second sentence — the
+  // label already says it — but a closed session does (the ledger's gate
+  // note points at the verify).
+  status.hidden = !m.armed && !audit.sessionClosed;
   status.textContent = m.status;
   startAuditTick(m); // US-1851 — the countdown advances between polls
   list.innerHTML = m.empty
@@ -537,23 +554,33 @@ $('pin-manage-lock').addEventListener('click', async () => {
 // does not carry.
 $('pin-manage-touch').addEventListener('change', async (ev) => {
   const box = ev.target;
-  const disable = !box.checked;
+  // US-1853 — the polarity follows the US-1852 semantics: checked = the
+  // bypass is active, so CHECKING arms it (touch_policy_set(true) is the
+  // arm leg) and UNCHECKING disarms it. The first cut kept the old
+  // `disable = !box.checked` from the checked-=-touch-required world —
+  // checking sent the disarm direction, a silent no-op, and the fresh
+  // read snapped the box back: the blink the owner caught. The variable
+  // is `arm` now; the old name described the checkbox, this one
+  // describes the wire.
+  const arm = box.checked;
   box.disabled = true;
-  // The disable leg arms a consent press on the board — the wait is real
-  // and must be legible: the same touch bar the gated ops use, naming the
-  // ceremony. The enable leg is friction-free and stays silent.
-  if (disable) touch(true, 'touch the board to confirm — the press is the consent');
+  // The arm leg needs a consent press on the board — the wait is real and
+  // must be legible: the same touch bar the gated ops use, naming the
+  // ceremony. The disarm leg is friction-free and stays silent.
+  if (arm) touch(true, 'touch the board to confirm — the press is the consent');
   try {
     // `call` is variadic — the args ARE the list. Wrapping the flag in an
     // array delivered `[[false]]` and the worker's boolean check refused it.
-    const r = await api.call('touch_policy_set', disable);
+    const r = await api.call('touch_policy_set', arm);
     pinFlow.touchInfoRefreshed(r.info);
   } catch (err) {
     deviceCallNotice(err);
   } finally {
     touch(false);
-    renderPinManage();
-    refreshAudit(); // US-1846 — arming or clearing the bypass moves the budget line in place
+    // US-1853 — one fresh device read renders the whole outcome: the
+    // checkbox, the label and the status line all come off the same word,
+    // so there is no cached re-render flashing between toggle and truth.
+    await refreshAudit();
   }
 });
 $('pin-manage-back').addEventListener('click', () => {

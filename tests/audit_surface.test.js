@@ -413,14 +413,51 @@ test('US-1852 the bypass checkbox renders the device word first, the cache only 
   assert.match(fn[0], /sessionClosed/, 'a closed session can only mean the bypass is gone');
 });
 
-test('US-1852 the label and the checked state finally agree', async () => {
+test('US-1852/1853 the label names the state the checkbox shows, both ways', async () => {
   const html = await read('src/popup/popup.html');
-  assert.match(html, /Bypass active — signatures run without a touch/,
-    'the owner-chose label: the state the checkbox shows is the state it names');
+  assert.ok(html.includes('id="pin-manage-touch-label"'), 'the label is a rendered element, not static copy');
   assert.doesNotMatch(html, /Require touch for signing/, 'the inverted-cached label is gone');
-  // And the change leg survives the flip unchecked-to-checked unchanged:
-  // unchecking (bypass off) is the direction that costs the consent press.
+  const js = await read('src/popup/popup.js');
+  // US-1853 — the owner's words, both states: a static "active" label over
+  // an unchecked box lied twice a day.
+  assert.match(js, /Bypass active — signatures run without a touch/);
+  assert.match(js, /Bypass not active — signatures need a touch/);
+  assert.match(js, /box\.checked \? TOUCH_LABELS\.on : TOUCH_LABELS\.off/,
+    'the label renders from the effective state, whatever source set it');
+});
+
+test('US-1853 the change leg arms on CHECK — the polarity follows the semantics', async () => {
+  // The owner's blink: US-1852 flipped the checkbox to checked = bypass
+  // active but left the old `disable = !box.checked` wiring, so CHECKING
+  // sent the disarm direction (a silent no-op) and the fresh read snapped
+  // the box back. The wire mapping is touch_policy_set(true) = arm, so the
+  // checked state IS the arm direction — same value, no inversion.
   const js = await read('src/popup/popup.js');
   const handler = js.match(/\$\('pin-manage-touch'\)\.addEventListener\('change'[\s\S]*?\n\}\);/);
-  assert.match(handler[0], /disable = !box\.checked/, 'unchecking still asks the board to end the bypass');
+  assert.ok(handler, 'the change listener exists');
+  const body = handler[0];
+  assert.match(body, /const arm = box\.checked/,
+    'checked = bypass active = the arm direction — no negation left to invert');
+  assert.match(body, /api\.call\('touch_policy_set', arm\)/,
+    'the flag rides the variadic call bare, pointing at arm');
+  assert.match(body, /if \(arm\) touch\(true/,
+    'the consent press belongs to the ARM leg — the board is waiting and the wait must be legible');
+  assert.doesNotMatch(body, /renderPinManage\(\)/,
+    'the finally renders from one fresh device read, not a cached re-render before it');
+  assert.match(body, /await refreshAudit\(\)/,
+    'the outcome renders from the device word — no stale flash between toggle and truth');
+});
+
+test('US-1853 the armed status sits with the toggle it describes', async () => {
+  const html = await read('src/popup/popup.html');
+  // The status line renders next to the checkbox (before the ledger block),
+  // so "bypass armed — N left · expires in M:SS" answers the label directly.
+  const statusIdx = html.indexOf('id="pin-manage-audit-status"');
+  const rowIdx = html.indexOf('id="pin-manage-touch-row"');
+  const blockIdx = html.indexOf('id="pin-manage-audit"');
+  assert.ok(statusIdx > rowIdx && statusIdx < blockIdx,
+    'the status line lives between the checkbox row and the ledger block');
+  const js = await read('src/popup/popup.js');
+  assert.match(js, /status\.hidden = !m\.armed && !audit\.sessionClosed/,
+    'armed (or gate-closed) shows the status; a plain-off session needs no second sentence');
 });
