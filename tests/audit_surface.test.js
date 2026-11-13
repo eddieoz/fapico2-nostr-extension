@@ -484,7 +484,9 @@ test('US-1853 review: the failure paths render the toggle and never freeze a sta
   // Both early-return paths owe the checkbox its enabled/disabled render —
   // the box is disabled at the start of its own change flight and only
   // renderTouchCheckbox re-enables it.
-  const unsupported = body.match(/if \(!pinFlow\.view\.state\?\.auditSupported\)[\s\S]*?\n  \}/);
+  // US-1854 widened the gate (auditBodyV3 joined it) — the render obligation
+  // is the same either way: the toggle re-renders, no stuck box.
+  const unsupported = body.match(/if \(!pinFlow\.view\.state\?\.auditSupported \|\| !pinFlow\.view\.state\?\.auditBodyV3\)[\s\S]*?\n  \}/);
   assert.match(unsupported[0], /renderTouchCheckbox\(\)/,
     'a board without the accounting capability still toggles the policy — no stuck box');
   const caught = body.match(/catch \{[\s\S]*?\n  \}/);
